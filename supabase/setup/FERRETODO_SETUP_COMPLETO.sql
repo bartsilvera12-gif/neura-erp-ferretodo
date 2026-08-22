@@ -22,7 +22,8 @@ DECLARE
   v_tgt      text := 'ferretodo';
   v_emp_src  uuid := '33eb907d-7df3-4e1f-8fe9-20965c6f05ed';  -- empresa Ferrecolor (plantilla)
   v_emp_new  uuid;
-  r RECORD; v_def text; v_seq text; v_col text; v_tbl text; v_n int;
+  v_cat      text;   -- schema del catalogo global (se autodetecta: public / zentra_erp)
+  r RECORD; v_def text; v_seq text; v_col text; v_tbl text; v_n int; v_ok boolean;
 BEGIN
   -- ══ 0) Guardas ═════════════════════════════════════════════════════════════
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = v_src) THEN
@@ -31,10 +32,23 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = v_tgt) THEN
     RAISE EXCEPTION 'El schema % YA existe. Abortado para no pisar nada.', v_tgt;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM zentra_erp.empresas WHERE id = v_emp_src) THEN
-    RAISE EXCEPTION 'No existe la empresa plantilla % (Ferrecolor).', v_emp_src;
+  -- Catalogo global: puede vivir en `public` o en `zentra_erp` segun la instalacion.
+  SELECT table_schema INTO v_cat
+  FROM information_schema.tables
+  WHERE table_name = 'empresas' AND table_schema IN ('public','zentra_erp')
+  ORDER BY CASE table_schema WHEN 'public' THEN 1 ELSE 2 END
+  LIMIT 1;
+  IF v_cat IS NULL THEN
+    RAISE EXCEPTION 'No se encontro la tabla `empresas` ni en public ni en zentra_erp.';
   END IF;
-  IF EXISTS (SELECT 1 FROM zentra_erp.empresas WHERE data_schema = v_tgt) THEN
+  RAISE NOTICE 'Catalogo global detectado en: %', v_cat;
+
+  EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.empresas WHERE id = %L)', v_cat, v_emp_src) INTO v_ok;
+  IF NOT v_ok THEN
+    RAISE EXCEPTION 'No existe la empresa plantilla % (Ferrecolor) en %.empresas.', v_emp_src, v_cat;
+  END IF;
+  EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.empresas WHERE data_schema = %L)', v_cat, v_tgt) INTO v_ok;
+  IF v_ok THEN
     RAISE EXCEPTION 'Ya existe una empresa con data_schema=%. Abortado.', v_tgt;
   END IF;
 
@@ -157,34 +171,38 @@ BEGIN
   EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA %I GRANT ALL ON SEQUENCES TO postgres, service_role', v_tgt);
 
   -- ══ 10) Empresa Ferretodo (plantilla Ferrecolor, fiscal en blanco) ═════════
-  INSERT INTO zentra_erp.empresas
-  SELECT (jsonb_populate_record(
-            NULL::zentra_erp.empresas,
-            to_jsonb(e) || jsonb_build_object(
-              'id',          gen_random_uuid(),
-              'nombre',      'Ferretodo',
-              'data_schema', v_tgt,
-              'slug',        v_tgt,
-              'created_at',  now(),
-              'updated_at',  now(),
-              'ruc',          NULL, 'razon_social', NULL, 'timbrado', NULL,
-              'direccion',    NULL, 'telefono',     NULL, 'email',    NULL,
-              'logo_url',     NULL
-            ))).*
-  FROM zentra_erp.empresas e
-  WHERE e.id = v_emp_src
-  RETURNING id INTO v_emp_new;
+  EXECUTE format($SQL$
+    INSERT INTO %1$I.empresas
+    SELECT (jsonb_populate_record(
+              NULL::%1$I.empresas,
+              to_jsonb(e) || jsonb_build_object(
+                'id',          gen_random_uuid(),
+                'nombre',      'Ferretodo',
+                'data_schema', %2$L,
+                'slug',        %2$L,
+                'created_at',  now(),
+                'updated_at',  now(),
+                'ruc',          NULL, 'razon_social', NULL, 'timbrado', NULL,
+                'direccion',    NULL, 'telefono',     NULL, 'email',    NULL,
+                'logo_url',     NULL
+              ))).*
+    FROM %1$I.empresas e
+    WHERE e.id = %3$L
+    RETURNING id
+  $SQL$, v_cat, v_tgt, v_emp_src) INTO v_emp_new;
 
   IF v_emp_new IS NULL THEN
     RAISE EXCEPTION 'No se pudo crear la empresa Ferretodo.';
   END IF;
 
   -- ══ 11) Módulos: los mismos que Ferrecolor ════════════════════════════════
-  INSERT INTO zentra_erp.empresa_modulos (empresa_id, modulo_id)
-  SELECT v_emp_new, em.modulo_id
-  FROM zentra_erp.empresa_modulos em
-  WHERE em.empresa_id = v_emp_src
-  ON CONFLICT DO NOTHING;
+  EXECUTE format($SQL$
+    INSERT INTO %1$I.empresa_modulos (empresa_id, modulo_id)
+    SELECT %2$L::uuid, em.modulo_id
+    FROM %1$I.empresa_modulos em
+    WHERE em.empresa_id = %3$L
+    ON CONFLICT DO NOTHING
+  $SQL$, v_cat, v_emp_new, v_emp_src);
 
   -- ══ 12) Modo de facturación: seguro hasta cargar SIFEN propio ═════════════
   BEGIN
@@ -194,7 +212,7 @@ BEGIN
   EXCEPTION WHEN others THEN RAISE NOTICE 'facturacion_modo omitido: %', SQLERRM;
   END;
 
-  SELECT count(*) INTO v_n FROM zentra_erp.empresa_modulos WHERE empresa_id = v_emp_new;
+  EXECUTE format('SELECT count(*) FROM %I.empresa_modulos WHERE empresa_id = %L', v_cat, v_emp_new) INTO v_n;
 
   RAISE NOTICE '=========================================================';
   RAISE NOTICE ' FERRETODO LISTO';
@@ -215,8 +233,9 @@ NOTIFY pgrst, 'reload schema';
 -- =============================================================================
 
 -- 1) El empresa_id de Ferretodo (GUARDALO)
+-- (si tu catalogo esta en zentra_erp, cambia public. por zentra_erp.)
 SELECT id AS empresa_id_ferretodo, nombre, data_schema
-FROM zentra_erp.empresas WHERE data_schema = 'ferretodo';
+FROM public.empresas WHERE data_schema = 'ferretodo';
 
 -- 2) Estructura idéntica (las dos columnas deben coincidir)
 SELECT
