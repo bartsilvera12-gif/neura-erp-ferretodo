@@ -1,17 +1,16 @@
 -- =============================================================================
 -- FERRETODO — SETUP COMPLETO (un solo script)
 -- =============================================================================
--- Hace, en orden y en UNA transacción:
---   1) Crea el schema `ferretodo` clonando la ESTRUCTURA de `ferrecolor` (sin datos)
---   2) Crea la empresa Ferretodo (plantilla = Ferrecolor, fiscal en blanco)
---   3) Copia los módulos habilitados
---   4) Deja el modo de facturación en 'sin_factura_fiscal' (seguro)
---   5) Verifica que no haya fugas de Ferrecolor
+-- 1) Crea el schema `ferretodo` clonando la ESTRUCTURA de `ferrecolor` (sin datos)
+-- 2) Siembra el catálogo de `modulos` (definiciones del sistema, mismos ids)
+-- 3) Crea la empresa Ferretodo (plantilla = Ferrecolor, fiscal en blanco, id nuevo)
+-- 4) Habilita los mismos módulos y deja facturación en 'sin_factura_fiscal'
 --
--- NO copia ninguna fila de datos. NO toca Ferrecolor (solo lee su estructura).
--- Si algo falla, revierte todo. Aborta si `ferretodo` o la empresa ya existen.
+-- OJO: el catálogo (empresas/usuarios/modulos/empresa_modulos) vive DENTRO de
+-- cada schema tenant, no en un schema global.
 --
--- Los usuarios van al final (hay que crearlos antes en Supabase Auth).
+-- NO copia productos, clientes, ventas, compras ni ningún dato del negocio.
+-- Transaccional: si algo falla, revierte todo. Aborta si `ferretodo` ya existe.
 -- =============================================================================
 
 BEGIN;
@@ -22,7 +21,6 @@ DECLARE
   v_tgt      text := 'ferretodo';
   v_emp_src  uuid := '33eb907d-7df3-4e1f-8fe9-20965c6f05ed';  -- empresa Ferrecolor (plantilla)
   v_emp_new  uuid;
-  v_cat      text;   -- schema del catalogo global (se autodetecta: public / zentra_erp)
   r RECORD; v_def text; v_seq text; v_col text; v_tbl text; v_n int; v_ok boolean;
 BEGIN
   -- ══ 0) Guardas ═════════════════════════════════════════════════════════════
@@ -32,31 +30,16 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = v_tgt) THEN
     RAISE EXCEPTION 'El schema % YA existe. Abortado para no pisar nada.', v_tgt;
   END IF;
-  -- Catalogo global: puede vivir en `public` o en `zentra_erp` segun la instalacion.
-  SELECT table_schema INTO v_cat
-  FROM information_schema.tables
-  WHERE table_name = 'empresas' AND table_schema IN ('public','zentra_erp')
-  ORDER BY CASE table_schema WHEN 'public' THEN 1 ELSE 2 END
-  LIMIT 1;
-  IF v_cat IS NULL THEN
-    RAISE EXCEPTION 'No se encontro la tabla `empresas` ni en public ni en zentra_erp.';
-  END IF;
-  RAISE NOTICE 'Catalogo global detectado en: %', v_cat;
-
-  EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.empresas WHERE id = %L)', v_cat, v_emp_src) INTO v_ok;
+  EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.empresas WHERE id = %L)', v_src, v_emp_src) INTO v_ok;
   IF NOT v_ok THEN
-    RAISE EXCEPTION 'No existe la empresa plantilla % (Ferrecolor) en %.empresas.', v_emp_src, v_cat;
-  END IF;
-  EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.empresas WHERE data_schema = %L)', v_cat, v_tgt) INTO v_ok;
-  IF v_ok THEN
-    RAISE EXCEPTION 'Ya existe una empresa con data_schema=%. Abortado.', v_tgt;
+    RAISE EXCEPTION 'No existe la empresa plantilla % en %.empresas.', v_emp_src, v_src;
   END IF;
 
   -- ══ 1) Schema + grants ═════════════════════════════════════════════════════
   EXECUTE format('CREATE SCHEMA %I', v_tgt);
   EXECUTE format('GRANT USAGE ON SCHEMA %I TO postgres, anon, authenticated, service_role', v_tgt);
 
-  -- ══ 2) Tablas (estructura completa; las FKs se agregan en el paso 4) ═══════
+  -- ══ 2) Tablas (estructura completa; FKs en el paso 4) ══════════════════════
   FOR r IN
     SELECT c.relname AS tabla FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -66,7 +49,7 @@ BEGIN
     EXECUTE format('CREATE TABLE %I.%I (LIKE %I.%I INCLUDING ALL)', v_tgt, r.tabla, v_src, r.tabla);
   END LOOP;
 
-  -- ══ 3) Secuencias propias (que no queden mirando a ferrecolor) ═════════════
+  -- ══ 3) Secuencias propias ══════════════════════════════════════════════════
   FOR r IN
     SELECT c.relname AS tabla, a.attname AS columna
     FROM pg_class c
@@ -83,7 +66,7 @@ BEGIN
     EXECUTE format('ALTER SEQUENCE %I.%I OWNED BY %I.%I.%I', v_tgt, v_seq, v_tgt, v_tbl, v_col);
   END LOOP;
 
-  -- ══ 4) FKs: internas reescritas al schema nuevo; externas intactas ═════════
+  -- ══ 4) FKs: internas reescritas; externas intactas ═════════════════════════
   FOR r IN
     SELECT c.relname AS tabla, con.conname AS nombre, pg_get_constraintdef(con.oid) AS definicion
     FROM pg_constraint con
@@ -100,7 +83,7 @@ BEGIN
     END;
   END LOOP;
 
-  -- ══ 5) Funciones del schema ════════════════════════════════════════════════
+  -- ══ 5) Funciones ═══════════════════════════════════════════════════════════
   FOR r IN
     SELECT pg_get_functiondef(p.oid) AS definicion FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -170,7 +153,11 @@ BEGIN
   EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO authenticated', v_tgt);
   EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA %I GRANT ALL ON SEQUENCES TO postgres, service_role', v_tgt);
 
-  -- ══ 10) Empresa Ferretodo (plantilla Ferrecolor, fiscal en blanco) ═════════
+  -- ══ 10) Catálogo de módulos (definiciones del sistema, NO datos del cliente)
+  --      Se copian con los MISMOS ids para que empresa_modulos matchee.
+  EXECUTE format('INSERT INTO %I.modulos SELECT * FROM %I.modulos ON CONFLICT DO NOTHING', v_tgt, v_src);
+
+  -- ══ 11) Empresa Ferretodo (plantilla Ferrecolor, id nuevo, fiscal en blanco)
   EXECUTE format($SQL$
     INSERT INTO %1$I.empresas
     SELECT (jsonb_populate_record(
@@ -178,33 +165,45 @@ BEGIN
               to_jsonb(e) || jsonb_build_object(
                 'id',          gen_random_uuid(),
                 'nombre',      'Ferretodo',
-                'data_schema', %2$L,
-                'slug',        %2$L,
+                'data_schema', %1$L,
+                'slug',        %1$L,
                 'created_at',  now(),
                 'updated_at',  now(),
                 'ruc',          NULL, 'razon_social', NULL, 'timbrado', NULL,
                 'direccion',    NULL, 'telefono',     NULL, 'email',    NULL,
                 'logo_url',     NULL
               ))).*
-    FROM %1$I.empresas e
+    FROM %2$I.empresas e
     WHERE e.id = %3$L
     RETURNING id
-  $SQL$, v_cat, v_tgt, v_emp_src) INTO v_emp_new;
+  $SQL$, v_tgt, v_src, v_emp_src) INTO v_emp_new;
 
   IF v_emp_new IS NULL THEN
     RAISE EXCEPTION 'No se pudo crear la empresa Ferretodo.';
   END IF;
 
-  -- ══ 11) Módulos: los mismos que Ferrecolor ════════════════════════════════
+  -- ══ 12) Módulos habilitados: los mismos que Ferrecolor ════════════════════
   EXECUTE format($SQL$
     INSERT INTO %1$I.empresa_modulos (empresa_id, modulo_id)
     SELECT %2$L::uuid, em.modulo_id
-    FROM %1$I.empresa_modulos em
-    WHERE em.empresa_id = %3$L
+    FROM %3$I.empresa_modulos em
+    WHERE em.empresa_id = %4$L
     ON CONFLICT DO NOTHING
-  $SQL$, v_cat, v_emp_new, v_emp_src);
+  $SQL$, v_tgt, v_emp_new, v_src, v_emp_src);
 
-  -- ══ 12) Modo de facturación: seguro hasta cargar SIFEN propio ═════════════
+  -- ══ 13) Vistas de dashboard (config de la empresa, si la tabla existe) ════
+  BEGIN
+    EXECUTE format($SQL$
+      INSERT INTO %1$I.empresa_dashboard_views
+      SELECT (jsonb_populate_record(NULL::%1$I.empresa_dashboard_views,
+                to_jsonb(v) || jsonb_build_object('id', gen_random_uuid(), 'empresa_id', %2$L))).*
+      FROM %3$I.empresa_dashboard_views v
+      WHERE v.empresa_id = %4$L
+    $SQL$, v_tgt, v_emp_new, v_src, v_emp_src);
+  EXCEPTION WHEN others THEN RAISE NOTICE 'dashboard_views omitido: %', SQLERRM;
+  END;
+
+  -- ══ 14) Modo de facturación: seguro hasta cargar SIFEN propio ═════════════
   BEGIN
     EXECUTE format(
       'INSERT INTO %I.empresa_facturacion_modo (empresa_id, modo) VALUES (%L, %L) ON CONFLICT (empresa_id) DO NOTHING',
@@ -212,7 +211,7 @@ BEGIN
   EXCEPTION WHEN others THEN RAISE NOTICE 'facturacion_modo omitido: %', SQLERRM;
   END;
 
-  EXECUTE format('SELECT count(*) FROM %I.empresa_modulos WHERE empresa_id = %L', v_cat, v_emp_new) INTO v_n;
+  EXECUTE format('SELECT count(*) FROM %I.empresa_modulos WHERE empresa_id = %L', v_tgt, v_emp_new) INTO v_n;
 
   RAISE NOTICE '=========================================================';
   RAISE NOTICE ' FERRETODO LISTO';
@@ -232,25 +231,27 @@ NOTIFY pgrst, 'reload schema';
 -- VERIFICACIÓN
 -- =============================================================================
 
--- 1) El empresa_id de Ferretodo (GUARDALO)
--- (si tu catalogo esta en zentra_erp, cambia public. por zentra_erp.)
-SELECT id AS empresa_id_ferretodo, nombre, data_schema
-FROM public.empresas WHERE data_schema = 'ferretodo';
+-- 1) empresa_id de Ferretodo (GUARDALO)
+SELECT id AS empresa_id_ferretodo, nombre, data_schema FROM ferretodo.empresas;
 
--- 2) Estructura idéntica (las dos columnas deben coincidir)
+-- 2) Estructura idéntica (deben coincidir)
 SELECT
   (SELECT count(*) FROM information_schema.tables  WHERE table_schema='ferrecolor' AND table_type='BASE TABLE') AS tablas_ferrecolor,
   (SELECT count(*) FROM information_schema.tables  WHERE table_schema='ferretodo'  AND table_type='BASE TABLE') AS tablas_ferretodo,
   (SELECT count(*) FROM information_schema.columns WHERE table_schema='ferrecolor') AS cols_ferrecolor,
   (SELECT count(*) FROM information_schema.columns WHERE table_schema='ferretodo')  AS cols_ferretodo;
 
--- 3) Sin datos de Ferrecolor (todo debe dar 0)
-SELECT (SELECT count(*) FROM ferretodo.productos) AS productos,
-       (SELECT count(*) FROM ferretodo.clientes)  AS clientes,
-       (SELECT count(*) FROM ferretodo.ventas)    AS ventas,
-       (SELECT count(*) FROM ferretodo.compras)   AS compras;
+-- 3) Catálogo sembrado (>0) y negocio vacío (=0)
+SELECT (SELECT count(*) FROM ferretodo.modulos)         AS modulos_catalogo,
+       (SELECT count(*) FROM ferretodo.empresas)        AS empresas,
+       (SELECT count(*) FROM ferretodo.empresa_modulos) AS modulos_habilitados,
+       (SELECT count(*) FROM ferretodo.productos)       AS productos,
+       (SELECT count(*) FROM ferretodo.clientes)        AS clientes,
+       (SELECT count(*) FROM ferretodo.ventas)          AS ventas,
+       (SELECT count(*) FROM ferretodo.compras)         AS compras,
+       (SELECT count(*) FROM ferretodo.usuarios)        AS usuarios;
 
--- 4) Sin fugas: ninguna FK ni default apuntando a ferrecolor (0 filas)
+-- 4) Sin fugas hacia ferrecolor (0 filas)
 SELECT c.relname AS tabla, con.conname AS fk
 FROM pg_constraint con
 JOIN pg_class c ON c.oid = con.conrelid
@@ -260,17 +261,16 @@ WHERE n.nspname='ferretodo' AND con.contype='f'
 
 
 -- =============================================================================
--- USUARIOS — correr DESPUÉS de crearlos en Supabase → Authentication → Users
--- Reemplazar <AUTH_USER_UUID> y <EMPRESA_ID_FERRETODO>
+-- USUARIOS — después de crearlos en Supabase → Authentication → Users
 -- =============================================================================
--- INSERT INTO zentra_erp.usuarios (id, empresa_id, email, nombre, rol, activo)
+-- INSERT INTO ferretodo.usuarios (id, empresa_id, email, nombre, rol, activo)
 -- VALUES ('<AUTH_USER_UUID>'::uuid, '<EMPRESA_ID_FERRETODO>'::uuid,
 --         'admin@ferretodo.com.py', 'Admin Ferretodo', 'admin', true)
 -- ON CONFLICT (id) DO UPDATE
 --   SET empresa_id = EXCLUDED.empresa_id, rol = EXCLUDED.rol, activo = true;
 --
--- INSERT INTO zentra_erp.usuario_modulos (usuario_id, modulo_id)
+-- INSERT INTO ferretodo.usuario_modulos (usuario_id, modulo_id)
 -- SELECT '<AUTH_USER_UUID>'::uuid, em.modulo_id
--- FROM zentra_erp.empresa_modulos em
+-- FROM ferretodo.empresa_modulos em
 -- WHERE em.empresa_id = '<EMPRESA_ID_FERRETODO>'::uuid
 -- ON CONFLICT DO NOTHING;
