@@ -4,60 +4,28 @@ Checklist para dejar operativo este ERP. Ejecutar **en este orden**.
 
 ---
 
-## 1. Crear el schema `ferretodo` en Postgres
+## 1. Crear el schema `ferretodo` (clon de la estructura de `ferrecolor`)
 
-El schema se clona desde la plantilla `zentra_erp`. La función crea el schema y
-aplica **todos los grants y default privileges** (postgres, anon, authenticated,
-service_role), así que no hace falta otorgarlos a mano.
+Ejecutar **completo** el archivo:
 
-```sql
-SELECT zentra_erp.neura_clone_zentra_erp_to_tenant('ferretodo');
+```
+supabase/setup/00_clonar_schema_ferretodo.sql
 ```
 
-Verificación rápida:
+Clona de `ferrecolor` **solo la estructura** (tablas, columnas, defaults, PK/unique/
+check, índices, FKs, secuencias, triggers, funciones, vistas, RLS + policies) y aplica
+todos los grants. **No copia ninguna fila.** Es transaccional y aborta si `ferretodo`
+ya existe. Al final trae consultas de verificación (deben coincidir las tablas/columnas
+y dar 0 filas las de fugas hacia `ferrecolor`).
 
-```sql
-SELECT count(*) AS tablas
-FROM information_schema.tables
-WHERE table_schema = 'ferretodo';
-```
+> No usar `zentra_erp.neura_clone_zentra_erp_to_tenant()`: clona la plantilla
+> (no el estado real de Ferrecolor) y además exige que el schema empiece con `erp_`.
 
-## 2. Aplicar las migraciones propias del tenant
+## 2. Migraciones del tenant
 
-Estas 4 migraciones agregan lo que no trae la plantilla. Son **aditivas e
-idempotentes** (se pueden correr más de una vez).
-
-```sql
--- 2.1 Devoluciones de venta
---     (contenido completo en supabase/migrations/20260721120000_ferretodo_devoluciones_ventas.sql)
-
--- 2.2 Puente Venta -> Factura electrónica (SIFEN)
-ALTER TABLE ferretodo.ventas        ADD COLUMN IF NOT EXISTS factura_id uuid;
-CREATE INDEX IF NOT EXISTS ventas_factura_id_idx ON ferretodo.ventas (empresa_id, factura_id);
-ALTER TABLE ferretodo.facturas      ADD COLUMN IF NOT EXISTS origen_venta_id uuid;
-ALTER TABLE ferretodo.facturas      ADD COLUMN IF NOT EXISTS cliente_razon_social text;
-ALTER TABLE ferretodo.facturas      ADD COLUMN IF NOT EXISTS cliente_ruc text;
-CREATE INDEX IF NOT EXISTS facturas_origen_venta_id_idx ON ferretodo.facturas (empresa_id, origen_venta_id);
-ALTER TABLE ferretodo.factura_items ADD COLUMN IF NOT EXISTS tipo_iva text;
-
--- 2.3 Campos de facturación del cliente
-ALTER TABLE ferretodo.clientes ADD COLUMN IF NOT EXISTS nombre_facturacion text;
-ALTER TABLE ferretodo.clientes ADD COLUMN IF NOT EXISTS nivel_precio text NOT NULL DEFAULT 'minorista'
-  CHECK (nivel_precio IN ('minorista','mayorista','distribuidor'));
-ALTER TABLE ferretodo.clientes ADD COLUMN IF NOT EXISTS es_contribuyente boolean NOT NULL DEFAULT false;
-
--- 2.4 Estado de pago de compras ("Marcar pagada")
-ALTER TABLE ferretodo.compras ADD COLUMN IF NOT EXISTS estado_pago text NOT NULL DEFAULT 'pendiente'
-  CHECK (estado_pago IN ('pendiente','pagada'));
-ALTER TABLE ferretodo.compras ADD COLUMN IF NOT EXISTS pagada_at timestamptz;
-ALTER TABLE ferretodo.compras ADD COLUMN IF NOT EXISTS pago_caja_movimiento_id uuid;
-
--- Refrescar el cache de PostgREST para que reconozca las columnas nuevas
-NOTIFY pgrst, 'reload schema';
-```
-
-> La 2.1 (devoluciones) es un `CREATE TABLE` largo: correr el archivo
-> `supabase/migrations/20260721120000_ferretodo_devoluciones_ventas.sql` completo.
+Ya vienen incluidas en el clon del paso 1 (porque se copian desde `ferrecolor`,
+que las tiene aplicadas). Los archivos quedan versionados en
+`supabase/migrations/*_ferretodo_*.sql` como referencia para bases nuevas.
 
 ## 3. Exponer el schema en Supabase
 
