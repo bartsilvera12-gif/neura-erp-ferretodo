@@ -371,7 +371,7 @@ export default function VerPedidoPage({
           {/* Link a venta */}
           {pedido.estado === "facturado" && pedido.venta_id && (
             <Link
-              href={`/api/ventas/${pedido.venta_id}/comprobante-a4`}
+              href={`/api/ventas/${pedido.venta_id}/comprobante-a4?auto=1`}
               target="_blank"
               className="inline-flex items-center justify-center gap-2 w-full rounded-xl bg-[#4FAEB2] hover:bg-[#3F8E91] text-white text-sm font-bold py-3 transition-colors shadow-md shadow-[#4FAEB2]/30"
             >

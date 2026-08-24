@@ -927,7 +927,7 @@ export default function NuevaVentaPage() {
       // SOLO si la venta la genera (cliente con usa_nota_remision o toggle activo).
       const v = resultado.venta;
       const generaNota = v.genera_nota_remision === true || !!v.nota_remision_numero;
-      const ticketUrl = `/api/ventas/${v.id}/comprobante-a4`;
+      const ticketUrl = `/api/ventas/${v.id}/comprobante-a4?auto=1`;
       const remisionUrl = `/api/ventas/${v.id}/ticket?tipo=remision&auto=1`;
 
       // Si esta venta se origino desde un presupuesto, marcar el presupuesto
@@ -1743,7 +1743,7 @@ export default function NuevaVentaPage() {
 
             <div className="grid grid-cols-1 gap-2">
               <a
-                href={`/api/ventas/${postVenta.id}/comprobante-a4`}
+                href={`/api/ventas/${postVenta.id}/comprobante-a4?auto=1`}
                 target="_blank"
                 rel="noopener"
                 className="rounded-lg bg-[#0EA5E9] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0284C7]"

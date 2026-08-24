@@ -234,6 +234,7 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
     <div class="corte"><span>✂ CORTAR AQUÍ ✂</span></div>
   </div>
   <script>try{ if(${autoPrint ? "true" : "false"}){ setTimeout(function(){window.print();},250); } }catch(e){}</script>
+<script>try{ if (new URL(location.href).searchParams.get('auto')==='1') { window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 250); }); } }catch(e){}</script>
 </body></html>`;
 
   return new NextResponse(html, {

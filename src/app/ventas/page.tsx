@@ -395,7 +395,7 @@ export default function VentasPage() {
                             </button>
                           )}
                           <a
-                            href={`/api/ventas/${v.id}/comprobante-a4`}
+                            href={`/api/ventas/${v.id}/comprobante-a4?auto=1`}
                             target="_blank"
                             rel="noopener"
                             className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
@@ -420,7 +420,7 @@ export default function VentasPage() {
                           )}
                           {v.genera_nota_remision && (
                             <a
-                              href={`/api/ventas/${v.id}/ticket?tipo=remision`}
+                              href={`/api/ventas/${v.id}/ticket?tipo=remision&auto=1`}
                               target="_blank"
                               rel="noopener"
                               className="inline-flex items-center justify-center rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 transition-colors"

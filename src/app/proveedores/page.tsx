@@ -15,6 +15,20 @@ export default function ProveedoresPage() {
   const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [errorBorrado, setErrorBorrado] = useState<string | null>(null);
+
+  async function borrarProveedor(id: string, nombre: string) {
+    if (!confirm(`¿Borrar el proveedor "${nombre}"? Si ya tiene compras registradas no se podrá borrar; en ese caso marcalo como inactivo.`)) return;
+    setErrorBorrado(null);
+    try {
+      const r = await fetch(`/api/proveedores/${id}`, { method: "DELETE", credentials: "include" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.success) { setErrorBorrado(j?.error ?? `Error ${r.status}`); return; }
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setErrorBorrado(e instanceof Error ? e.message : "Error de red al borrar.");
+    }
+  }
 
   useEffect(() => {
     let cancel = false;
@@ -87,6 +101,12 @@ export default function ProveedoresPage() {
           </span>
         </div>
 
+        {errorBorrado && (
+
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorBorrado}</div>
+
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
@@ -154,12 +174,21 @@ export default function ProveedoresPage() {
                       </span>
                     </td>
                     <td className="py-3">
-                      <Link
-                        href={`/proveedores/${p.id}/editar`}
-                        className="text-sm font-medium text-sky-600 hover:underline"
-                      >
-                        Editar
-                      </Link>
+                      <div className="flex gap-3 whitespace-nowrap">
+                        <Link
+                          href={`/proveedores/${p.id}/editar`}
+                          className="text-sm font-medium text-sky-600 hover:underline"
+                        >
+                          Editar
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void borrarProveedor(p.id, p.nombre)}
+                          className="text-sm font-medium text-red-600 hover:underline"
+                        >
+                          Borrar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

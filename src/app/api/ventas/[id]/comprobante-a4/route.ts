@@ -429,6 +429,7 @@ export async function GET(
     </div>
     <div class="corte"><span>✂ CORTAR AQUÍ ✂</span></div>
   </div>
+<script>try{ if (new URL(location.href).searchParams.get('auto')==='1') { window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 250); }); } }catch(e){}</script>
 </body></html>`;
 
     return new NextResponse(html, {

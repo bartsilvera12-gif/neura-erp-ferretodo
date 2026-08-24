@@ -178,7 +178,7 @@ export default function ConciliacionReportePage() {
                       <th className="py-2.5 pr-4 font-medium text-right">Monto</th>
                       <th className="py-2.5 pr-4 font-medium">N° Comprobante</th>
                       <th className="py-2.5 pr-4 font-medium">Estado</th>
-                      <th className="py-2.5 font-medium text-right">Acción</th>
+                      <th className="py-2.5 font-medium text-right" style={{position:"sticky",right:0,zIndex:10,background:"#fff"}}>Acción</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -199,9 +199,9 @@ export default function ConciliacionReportePage() {
                         <td className="py-3 pr-4">
                           <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${ESTADO_BADGE[m.estado]}`}>{ESTADO_LBL[m.estado]}</span>
                         </td>
-                        <td className="py-3 text-right">
+                        <td className="sticky right-0 z-10 bg-white py-3 pl-3 text-right shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]">
                           {m.estado === "pendiente" ? (
-                            <div className="inline-flex gap-2">
+                            <div className="inline-flex gap-2 whitespace-nowrap">
                               <button
                                 disabled={busy === m.id}
                                 onClick={() => setEstado(m, "aprobado")}

@@ -318,10 +318,10 @@ export default function NuevoPresupuestoPage() {
               <thead className="text-left text-xs text-gray-500 uppercase">
                 <tr>
                   <th className="py-2 pr-2">Descripción</th>
-                  <th className="py-2 px-2 w-20">Cant.</th>
+                  <th className="py-2 px-2 w-24">Cant.</th>
                   <th className="py-2 px-2 w-32">Precio unit.</th>
-                  <th className="py-2 px-2 w-24">IVA</th>
-                  <th className="py-2 px-2 w-28">Descuento</th>
+                  <th className="py-2 px-2 w-32">IVA</th>
+                  <th className="py-2 px-2 w-32">Descuento</th>
                   <th className="py-2 px-2 w-32 text-right">Total</th>
                   <th className="py-2 pl-2 w-10"></th>
                 </tr>
@@ -335,13 +335,13 @@ export default function NuevoPresupuestoPage() {
                         <input value={it.producto_nombre} onChange={(e) => updItem(i, { producto_nombre: e.target.value })} className={inputClass} placeholder="Descripción" />
                       </td>
                       <td className="py-2 px-2">
-                        <input type="number" min="0" step="0.01" value={it.cantidad === 0 ? "" : it.cantidad} onChange={(e) => updItem(i, { cantidad: Number(e.target.value) })} className={inputClass} />
+                        <input type="number" min="0" step="1" value={it.cantidad === 0 ? "" : it.cantidad} onChange={(e) => updItem(i, { cantidad: Number(e.target.value) })} className={inputClass} />
                       </td>
                       <td className="py-2 px-2">
                         <input type="number" min="0" step="1" value={it.precio_unitario === 0 ? "" : it.precio_unitario} onChange={(e) => updItem(i, { precio_unitario: Number(e.target.value) })} className={inputClass} />
                       </td>
                       <td className="py-2 px-2">
-                        <select value={it.iva_tipo} onChange={(e) => updItem(i, { iva_tipo: e.target.value as IvaTipoPresupuesto })} className={`${inputClass} bg-white`}>
+                        <select value={it.iva_tipo} onChange={(e) => updItem(i, { iva_tipo: e.target.value as IvaTipoPresupuesto })} className={`${inputClass} bg-white !px-2`}>
                           {IVAS.map((iv) => <option key={iv} value={iv}>{iv}</option>)}
                         </select>
                       </td>

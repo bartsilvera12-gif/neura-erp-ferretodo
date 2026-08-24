@@ -126,7 +126,7 @@ export default function DevolucionesPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1.5">
                         <button onClick={() => void abrirDetalle(d.id)} className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">Detalle</button>
-                        <a href={`/api/devoluciones/${d.id}/comprobante`} target="_blank" rel="noopener"
+                        <a href={`/api/devoluciones/${d.id}/comprobante?auto=1`} target="_blank" rel="noopener"
                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
                           <Printer className="h-3.5 w-3.5" /> Imprimir
                         </a>
