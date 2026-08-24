@@ -6,6 +6,7 @@ import {
   getEntidadesBancarias,
   createEntidadBancaria,
   updateEntidadBancaria,
+  deleteEntidadBancaria,
   type EntidadBancaria,
   type TipoEntidad,
 } from "@/lib/entidades/storage";
@@ -75,6 +76,12 @@ export default function EntidadesBancariasPage() {
     if (!res.ok) { setError(res.error); return; }
     setEditId(null);
     await reload();
+  }
+  async function borrar(en: EntidadBancaria) {
+    if (!confirm(`¿Borrar la entidad "${en.nombre}"? Si ya se usó en cobros o ventas no se podrá borrar; en ese caso desactivala.`)) return;
+    setError(null);
+    const res = await deleteEntidadBancaria(en.id);
+    if (!res.ok) setError(res.error); else await reload();
   }
   async function toggleActivo(en: EntidadBancaria) {
     const res = await updateEntidadBancaria(en.id, { activo: !en.activo });
@@ -159,7 +166,10 @@ export default function EntidadesBancariasPage() {
                       <button type="button" onClick={() => setEditId(null)} className="text-slate-500 hover:underline">Cancelar</button>
                     </div>
                   ) : (
-                    <button type="button" onClick={() => startEdit(en)} className="text-sky-600 font-medium hover:underline">Editar</button>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={() => startEdit(en)} className="text-sky-600 font-medium hover:underline">Editar</button>
+                      <button type="button" onClick={() => void borrar(en)} className="text-red-600 font-medium hover:underline">Borrar</button>
+                    </div>
                   )}
                 </td>
               </tr>

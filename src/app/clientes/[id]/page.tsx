@@ -195,9 +195,7 @@ export default function ClienteDetailPage() {
     documento:           "",
     es_contribuyente:    false,
     telefono:            "",
-    telefono_secundario: "",
     email:               "",
-    email_secundario:    "",
     direccion:           "",
     ciudad:              "",
     pais:                "",
@@ -355,9 +353,7 @@ export default function ClienteDetailPage() {
         documento:           c.documento           ?? "",
         es_contribuyente:    c.es_contribuyente === true,
         telefono:            c.telefono            ?? "",
-        telefono_secundario: c.telefono_secundario ?? "",
         email:               c.email               ?? "",
-        email_secundario:    c.email_secundario    ?? "",
         direccion:           c.direccion           ?? "",
         ciudad:              c.ciudad              ?? "",
         pais:                c.pais                ?? "",
@@ -516,7 +512,7 @@ export default function ClienteDetailPage() {
   }, [form.condicion_pago, id]);
 
   const upper = ["empresa", "nombre_contacto", "nombre_facturacion", "ciudad", "pais", "vendedor_asignado", "condicion_pago", "direccion", "sifen_codigo_pais"];
-  const lower = ["email", "email_secundario"];
+  const lower = ["email"];
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     setFormError(null);
@@ -646,9 +642,7 @@ export default function ClienteDetailPage() {
         documento:           form.documento.trim()           || undefined,
         es_contribuyente:    form.tipo_cliente === "persona" ? form.es_contribuyente : false,
         telefono:            form.telefono.trim()            || undefined,
-        telefono_secundario: form.telefono_secundario.trim() || undefined,
         email:               form.email.trim()               || undefined,
-        email_secundario:    form.email_secundario.trim()    || undefined,
         direccion:           form.direccion.trim()           || undefined,
         ciudad:              form.ciudad.trim().toUpperCase()  || undefined,
         pais:                form.pais.trim().toUpperCase()    || undefined,
@@ -969,7 +963,7 @@ export default function ClienteDetailPage() {
 
       {/* ── Panel resumen ─────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="bg-gradient-to-r from-[#0EA5E9] to-[#0284C7] px-6 py-5">
+        <div className="bg-gradient-to-r from-[#134E4A] via-[#115E59] to-[#0F766E] px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4">
               {/* Avatar */}
@@ -981,14 +975,14 @@ export default function ClienteDetailPage() {
               <div>
                 <h1 className="text-xl font-bold text-white leading-tight">{nombre}</h1>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
-                  <span className="text-gray-300 font-mono text-xs">{cliente.codigo_cliente}</span>
+                  <span className="text-white/75 font-mono text-xs">{cliente.codigo_cliente}</span>
                   {cliente.ruc && (
-                    <span className="text-gray-300 text-xs">RUC: {cliente.ruc}</span>
+                    <span className="text-white/75 text-xs">RUC: {cliente.ruc}</span>
                   )}
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                     cliente.estado === "activo"
-                      ? "bg-green-500/20 text-green-300"
-                      : "bg-gray-500/30 text-gray-300"
+                      ? "bg-emerald-400/25 text-emerald-50"
+                      : "bg-gray-500/30 text-white/75"
                   }`}>
                     ● {cliente.estado === "activo" ? "Activo" : "Inactivo"}
                   </span>
@@ -997,7 +991,7 @@ export default function ClienteDetailPage() {
                       Tributario
                     </span>
                   )}
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-white/70">
                     Cliente desde {formatFecha(cliente.created_at)}
                   </span>
                 </div>
@@ -1016,7 +1010,7 @@ export default function ClienteDetailPage() {
                 ) : (
                   <button
                     onClick={handleToggleEstado}
-                    className="text-xs font-medium border border-white/20 text-white/80 hover:bg-white/10 px-3 py-1.5 rounded-lg transition-colors"
+                    className="text-xs font-medium border border-white/35 text-white hover:bg-white/15 px-3 py-1.5 rounded-lg transition-colors"
                   >
                     Desactivar
                   </button>
@@ -1024,7 +1018,7 @@ export default function ClienteDetailPage() {
               ) : (
                 <button
                   onClick={handleToggleEstado}
-                  className="text-xs font-medium border border-white/20 text-white/80 hover:bg-white/10 px-3 py-1.5 rounded-lg transition-colors"
+                  className="text-xs font-medium border border-white/35 text-white hover:bg-white/15 px-3 py-1.5 rounded-lg transition-colors"
                 >
                   Reactivar
                 </button>
@@ -1626,25 +1620,17 @@ export default function ClienteDetailPage() {
               <section className="space-y-4">
                 <SectionTitle>Contacto</SectionTitle>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className={labelClass}>Teléfono principal</label>
                     <input type="text" name="telefono" value={form.telefono} onChange={handleChange} className={inputClass} />
                   </div>
-                  <div>
-                    <label className={labelClass}>Teléfono secundario</label>
-                    <input type="text" name="telefono_secundario" value={form.telefono_secundario} onChange={handleChange} className={inputClass} />
-                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className={labelClass}>Email principal</label>
                     <input type="email" name="email" value={form.email} onChange={handleChange} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Email secundario</label>
-                    <input type="email" name="email_secundario" value={form.email_secundario} onChange={handleChange} className={inputClass} />
                   </div>
                 </div>
 

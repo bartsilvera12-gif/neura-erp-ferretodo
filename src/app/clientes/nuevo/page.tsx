@@ -75,9 +75,7 @@ function NuevoClienteForm() {
     documento:           "",
     es_contribuyente:    false,
     telefono:            "",
-    telefono_secundario: "",
     email:               "",
-    email_secundario:    "",
     direccion:           "",
     ciudad:              "",
     pais:                "PARAGUAY",
@@ -209,7 +207,7 @@ function NuevoClienteForm() {
   }, [fromCrmId]);
 
   const upper = ["empresa", "nombre_contacto", "nombre_facturacion", "ciudad", "pais", "vendedor_asignado", "condicion_pago", "direccion", "sifen_codigo_pais"];
-  const lower = ["email", "email_secundario"];
+  const lower = ["email"];
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -633,17 +631,6 @@ function NuevoClienteForm() {
                   className={inputClass}
                 />
               </div>
-              <div>
-                <label className={labelClass}>Teléfono secundario</label>
-                <input
-                  type="text"
-                  name="telefono_secundario"
-                  value={form.telefono_secundario}
-                  onChange={handleChange}
-                  placeholder="0981-000000"
-                  className={inputClass}
-                />
-              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -655,17 +642,6 @@ function NuevoClienteForm() {
                   value={form.email}
                   onChange={handleChange}
                   placeholder="contacto@empresa.com"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Email secundario</label>
-                <input
-                  type="email"
-                  name="email_secundario"
-                  value={form.email_secundario}
-                  onChange={handleChange}
-                  placeholder="otro@empresa.com"
                   className={inputClass}
                 />
               </div>

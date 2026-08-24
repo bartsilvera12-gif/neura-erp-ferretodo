@@ -7,6 +7,7 @@ import {
   listEntidadesBancarias,
   insertEntidadBancaria,
   updateEntidadBancaria,
+  deleteEntidadBancaria,
   type TipoEntidad,
 } from "@/lib/ventas/server/pago-detalle-pg";
 
@@ -95,5 +96,34 @@ export async function PATCH(request: NextRequest) {
   } catch (err) {
     console.error("[/api/entidades-bancarias PATCH]", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudo actualizar la entidad."), { status: 500 });
+  }
+}
+
+/** DELETE /api/entidades-bancarias?id=... — borra una entidad si no está en uso. */
+export async function DELETE(request: NextRequest) {
+  try {
+    const ctx = await getTenantSupabaseFromAuth(request);
+    if (!ctx) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
+    const schema = await fetchDataSchemaForEmpresaId(ctx.auth.empresa_id);
+    const id = request.nextUrl.searchParams.get("id") ?? "";
+    if (!id.trim()) return NextResponse.json(errorResponse("Falta el id de la entidad."), { status: 400 });
+    try {
+      const ok = await deleteEntidadBancaria(schema, ctx.auth.empresa_id, id.trim());
+      if (!ok) return NextResponse.json(errorResponse("Entidad no encontrada."), { status: 404 });
+      return NextResponse.json(successResponse({ ok: true }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      // FK: la entidad ya se usó en cobros/ventas. No se borra para no romper el historial.
+      if (/23503|foreign key|violates/i.test(msg)) {
+        return NextResponse.json(
+          errorResponse("Esta entidad ya se usó en cobros o ventas, así que no se puede borrar. Desactivala (columna Activo) para dejar de ofrecerla."),
+          { status: 409 }
+        );
+      }
+      throw e;
+    }
+  } catch (err) {
+    console.error("[/api/entidades-bancarias DELETE]", err instanceof Error ? err.message : err);
+    return NextResponse.json(errorResponse("No se pudo borrar la entidad."), { status: 500 });
   }
 }

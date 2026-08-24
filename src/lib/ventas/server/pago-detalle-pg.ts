@@ -85,6 +85,22 @@ export async function insertEntidadBancaria(
 }
 
 /** Update parcial de una entidad. Devuelve la fila o null si no pertenece a la empresa. */
+/**
+ * Borra una entidad bancaria. Si está referenciada por ventas/cobros/caja, Postgres
+ * lanza violación de FK (23503) y el caller debe sugerir desactivarla en su lugar.
+ */
+export async function deleteEntidadBancaria(
+  schemaRaw: string,
+  empresaId: string,
+  id: string
+): Promise<boolean> {
+  const schema = assertAllowedChatDataSchema(schemaRaw);
+  const t = quoteSchemaTable(schema, "entidades_bancarias");
+  const { rowCount } = await pool().query(
+    `DELETE FROM ${t} WHERE id=$1::uuid AND empresa_id=$2::uuid`, [id, empresaId]);
+  return (rowCount ?? 0) > 0;
+}
+
 export async function updateEntidadBancaria(
   schemaRaw: string,
   empresaId: string,
