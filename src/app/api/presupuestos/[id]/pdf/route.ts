@@ -119,20 +119,20 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
   html, body { margin: 0; padding: 0; }
   body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1f2937; background: #f3f4f6; }
   .page { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fff; padding: 18mm 16mm; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #4FAEB2; padding-bottom: 12px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; border-bottom: 3px solid #4FAEB2; padding-bottom: 16px; margin-top: 4px; }
   .negocio { font-size: 22px; font-weight: 800; color: #1f2937; }
-  .doc-tag { color: #6b7280; font-size: 12px; margin-top: 2px; letter-spacing: .08em; text-transform: uppercase; }
-  .meta { text-align: right; font-size: 13px; }
+  .doc-tag { color: #6b7280; font-size: 12px; margin-top: 4px; letter-spacing: .08em; text-transform: uppercase; }
+  .meta { text-align: right; font-size: 12.5px; line-height: 1.7; white-space: nowrap; }
   .meta .num { font-size: 18px; font-weight: 700; color: #4FAEB2; }
-  .grid2 { display: flex; gap: 24px; margin-top: 16px; }
-  .box { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
+  .grid2 { display: flex; gap: 24px; margin-top: 22px; }
+  .box { flex: 1; min-width: 0; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; line-height: 1.6; }
   .box h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
   .box p { margin: 2px 0; font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 13px; }
-  thead th { background: #4FAEB2; color: #fff; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; margin-top: 26px; font-size: 12.5px; }
+  thead th { background: #4FAEB2; color: #fff; text-align: left; padding: 10px 12px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; }
   thead th.c, thead th.r { text-align: center; }
   thead th.r { text-align: right; }
-  tbody td { padding: 8px 10px; border-bottom: 1px solid #eef2f4; vertical-align: top; }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid #eef2f4; vertical-align: top; line-height: 1.5; }
   tbody td.c { text-align: center; }
   tbody td.r { text-align: right; }
   .sku { color: #9ca3af; font-size: 11px; }

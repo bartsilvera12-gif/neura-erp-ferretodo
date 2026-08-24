@@ -308,3 +308,59 @@ select:disabled {
 
 
 
+
+/**
+ * Impresión general del ERP.
+ *
+ * El AppShell usa h-svh + overflow oculto, y el sidebar/header son parte del
+ * layout: al imprimir cualquier pantalla (extracto de crédito, comprobantes,
+ * listados) salían el menú, la campana y el badge de usuario, con la hoja
+ * cortada a la altura de la ventana. Parecía una captura de pantalla.
+ *
+ * Acá se oculta el cromo de la app y se libera el alto para que el contenido
+ * fluya en varias páginas. Cada pantalla puede seguir usando `print:hidden`
+ * de Tailwind para esconder sus propios botones.
+ */
+@media print {
+  html, body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  #neura-sidebar,
+  #neura-header {
+    display: none !important;
+  }
+
+  #neura-app-shell {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  #neura-main-column {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  #neura-main-content {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  /* Evita cortar filas/tarjetas a la mitad entre páginas. */
+  table { page-break-inside: auto; }
+  tr, img { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+
+  @page { margin: 14mm; }
+}

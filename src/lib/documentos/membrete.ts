@@ -36,17 +36,32 @@ function esc(v: unknown): string {
  */
 export function membreteA4(origin = ""): string {
   const e = EMPRESA_DOC;
-  const logo = origin ? `${origin}${e.logoUrl}` : e.logoUrl;
+  const logo = origin && e.logoUrl ? `${origin}${e.logoUrl}` : e.logoUrl;
+  // Datos de contacto: solo los que tienen valor (evita "Tel:" vacío).
+  const contacto: string[] = [];
+  if (e.telefono) contacto.push(`<strong>Tel:</strong> ${esc(e.telefono)}`);
+  const dir = e.direccion.filter(Boolean).map(esc).join(" · ");
+  if (dir) contacto.push(dir);
+
+  // Sin logo el bloque izquierdo quedaba vacío y todo se apelmazaba a la derecha:
+  // en ese caso el nombre va a la izquierda y el contacto a la derecha.
+  const izquierda = logo
+    ? `<img src="${esc(logo)}" alt="${esc(e.nombre)}" style="max-width:170px;max-height:80px;width:auto;height:auto;object-fit:contain;display:block;" />`
+    : `<div style="font-size:19px;font-weight:800;color:#1f2937;letter-spacing:.2px;">${esc(e.nombre)}</div>`;
+
+  const nombreDerecha = logo
+    ? `<div style="font-size:14px;font-weight:800;color:#1f2937;">${esc(e.nombre)}</div>`
+    : "";
+
   return `
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;border-bottom:2px solid #2E7D32;padding-bottom:12px;margin-bottom:16px;">
-    <div style="flex:0 0 auto;">
-      ${logo ? `<img src="${esc(logo)}" alt="${esc(e.nombre)}" style="max-width:180px;max-height:92px;width:auto;height:auto;object-fit:contain;display:block;" />` : ""}
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:28px;border-bottom:2px solid #2E7D32;padding-bottom:16px;margin-bottom:22px;">
+    <div style="flex:0 1 auto;max-width:56%;">
+      ${izquierda}
+      ${e.actividad.filter(Boolean).map((a) => `<div style="margin-top:6px;font-size:10.5px;color:#6b7280;line-height:1.5;">${esc(a)}</div>`).join("")}
     </div>
-    <div style="flex:1;min-width:0;text-align:right;font-size:11px;color:#374151;line-height:1.55;">
-      <div style="font-size:14px;font-weight:800;color:#1f2937;">${esc(e.nombre)}</div>
-      ${e.actividad.map((a) => `<div style="color:#6b7280;">${esc(a)}</div>`).join("")}
-      <div style="margin-top:4px;"><strong>Tel:</strong> ${esc(e.telefono)}</div>
-      <div>${e.direccion.map(esc).join(" · ")}</div>
+    <div style="flex:0 0 auto;text-align:right;font-size:11px;color:#374151;line-height:1.7;">
+      ${nombreDerecha}
+      ${contacto.map((c) => `<div>${c}</div>`).join("")}
     </div>
   </div>`;
 }
