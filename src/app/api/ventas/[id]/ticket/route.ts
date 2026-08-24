@@ -344,16 +344,12 @@ function renderNotaRemision(opts: {
   .actions { max-width:720px; margin:0 auto 12px; text-align:right; }
   .actions button { background:#4FAEB2; color:#fff; border:none; border-radius:8px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15); }
   .actions button:hover { background:#3F8E91; }
-  .corte { display:none; }
   @page { size: A4 portrait; margin: 10mm; }
   @media print {
     html, body { background:#fff; padding:0; margin:0; }
     .doc { box-shadow:none; max-width:none; width:auto; padding:0; }
     .actions { display:none; }
     /* Marca visual de corte a la mitad: linea de tijera guia */
-    .corte { display:flex; align-items:center; gap:8px; margin-top:14px; padding-top:8px;
-             font-size:10px; color:#888; border-top:1px dashed #999; page-break-after:avoid; }
-    .corte span { flex:1; text-align:center; letter-spacing:1px; text-transform:uppercase; }
     /* Fuerza al documento a NO exceder media hoja A4 (approx 130mm util con margen).
        Si el contenido es mas largo, el navegador expande normalmente y usa hoja entera. */
     .doc { min-height: 0; }
@@ -378,7 +374,6 @@ function renderNotaRemision(opts: {
   </table>
   ${obs}
   <div class="legal">Documento no fiscal. Emitido para acompañar la entrega de mercaderías.</div>
-  <div class="corte"><span>✂ CORTAR AQUÍ ✂</span></div>
 </div>
 <script>try{ if (new URL(location.href).searchParams.get('auto')==='1') window.print(); }catch(e){}</script>
 </body></html>`;

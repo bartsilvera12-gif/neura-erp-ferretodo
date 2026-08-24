@@ -147,15 +147,11 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
   .legal { margin-top: 26px; padding-top: 12px; border-top: 1px dashed #d1d5db; font-size: 11px; color: #6b7280; text-align: center; }
   .toolbar { position: sticky; top: 0; background: #111827; color: #fff; padding: 10px 16px; display: flex; gap: 10px; justify-content: center; }
   .toolbar button { background: #4FAEB2; color: #fff; border: 0; padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; }
-  .corte { display: none; }
   @media print {
     body { background: #fff; }
     .toolbar { display: none; }
     .page { width: auto; min-height: auto; margin: 0; padding: 10mm; }
     @page { size: A4 portrait; margin: 10mm; }
-    .corte { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 6px;
-             font-size: 10px; color: #888; border-top: 1px dashed #999; }
-    .corte span { flex: 1; text-align: center; letter-spacing: 1px; text-transform: uppercase; }
   }
 </style>
 </head>
@@ -222,7 +218,6 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
       Presupuesto sujeto a disponibilidad de stock y validez indicada.<br>
       Documento no fiscal — no válido como factura.
     </div>
-    <div class="corte"><span>✂ CORTAR AQUÍ ✂</span></div>
   </div>
   <script>try{ if (${auto ? "true" : "false"}) window.print(); }catch(e){}</script>
 </body>

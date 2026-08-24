@@ -237,7 +237,6 @@ export async function GET(
     width: 210mm; min-height: 0; margin: 20px auto;
     padding: 8mm 10mm; box-shadow: 0 1px 6px rgba(0,0,0,.12);
   }
-  .corte { display:none; }
 
   /* Cabecera: logo + datos empresa a la izquierda + fecha a la derecha */
   .header-top {
@@ -334,9 +333,6 @@ export async function GET(
     .pie { margin-top: 4px; font-size: 10px; }
     .pie .linea { padding: 2px 0 1px; }
     .pie .total-final { font-size: 12px; padding-top: 3px; }
-    .corte { display:flex; align-items:center; gap:8px; margin-top:8px; padding-top:4px;
-             font-size:9px; color:#888; border-top:1px dashed #999; }
-    .corte span { flex:1; text-align:center; letter-spacing:1px; text-transform:uppercase; }
   }
 </style></head>
 <body>
@@ -427,7 +423,6 @@ export async function GET(
       }
       <div class="total-final">TOTAL: Gs. ${fmtGs(total)}</div>
     </div>
-    <div class="corte"><span>✂ CORTAR AQUÍ ✂</span></div>
   </div>
 <script>try{ if (new URL(location.href).searchParams.get('auto')==='1') { window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 250); }); } }catch(e){}</script>
 </body></html>`;
