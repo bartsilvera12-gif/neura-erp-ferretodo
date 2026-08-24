@@ -84,10 +84,11 @@ ON CONFLICT (empresa_id) DO UPDATE SET modo = 'sifen', updated_at = now();
 
 ## Logo
 
-No se incluyó ninguno (todavía no hay de Ferretodo). Cuando exista:
+Cargado desde `Logo Ferretodo .pdf` (CorelDRAW vectorial, renderizado a 600 dpi):
 
-- `public/brand/ferretodo-logo.png` → header y membrete de documentos
-  (poner la ruta en `EMPRESA_DOC.logoUrl` de `src/lib/documentos/membrete.ts`).
-- `public/logo-ferretodo.png` → logo por defecto del KUDE.
+- `public/brand/ferretodo-logo.png` — membrete y documentos (`EMPRESA_DOC.logoUrl`).
+- `public/logo-ferretodo.png` — logo por defecto del KUDE.
 
-Mientras no existan, la app degrada sin imagen rota.
+Es un lockup horizontal (1800×318, ~5.7:1) con **fondo azul marino solido**, no
+transparente: sobre hoja blanca se ve el rectangulo azul. Como el logo ya incluye
+la palabra FERRETODO, el membrete no repite el nombre al lado.

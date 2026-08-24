@@ -17,9 +17,8 @@ export const EMPRESA_DOC = {
   ],
   telefono: "",
   direccion: ["Paraguay"],
-  /** Logo del cliente (alta calidad, sin fondo). Servido desde /public. */
-  /** Sin logo por ahora: cuando exista, poner "/brand/ferretodo-logo.png" en /public. */
-  logoUrl: "",
+  /** Logo de Ferretodo (lockup horizontal con fondo azul). Servido desde /public. */
+  logoUrl: "/brand/ferretodo-logo.png",
 };
 
 function esc(v: unknown): string {
@@ -45,17 +44,17 @@ export function membreteA4(origin = ""): string {
 
   // Sin logo el bloque izquierdo quedaba vacío y todo se apelmazaba a la derecha:
   // en ese caso el nombre va a la izquierda y el contacto a la derecha.
+  // El logo de Ferretodo es un lockup horizontal (~5.7:1) que YA incluye el nombre,
+  // asi que cuando esta presente no se repite el nombre al lado.
   const izquierda = logo
-    ? `<img src="${esc(logo)}" alt="${esc(e.nombre)}" style="max-width:170px;max-height:80px;width:auto;height:auto;object-fit:contain;display:block;" />`
+    ? `<img src="${esc(logo)}" alt="${esc(e.nombre)}" style="max-width:250px;max-height:56px;width:auto;height:auto;object-fit:contain;display:block;" />`
     : `<div style="font-size:19px;font-weight:800;color:#1f2937;letter-spacing:.2px;">${esc(e.nombre)}</div>`;
 
-  const nombreDerecha = logo
-    ? `<div style="font-size:14px;font-weight:800;color:#1f2937;">${esc(e.nombre)}</div>`
-    : "";
+  const nombreDerecha = "";
 
   return `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:28px;border-bottom:2px solid #2E7D32;padding-bottom:16px;margin-bottom:22px;">
-    <div style="flex:0 1 auto;max-width:56%;">
+    <div style="flex:0 1 auto;max-width:62%;">
       ${izquierda}
       ${e.actividad.filter(Boolean).map((a) => `<div style="margin-top:6px;font-size:10.5px;color:#6b7280;line-height:1.5;">${esc(a)}</div>`).join("")}
     </div>
@@ -71,13 +70,18 @@ export function membreteA4(origin = ""): string {
  */
 export function membreteTicket(origin = ""): string {
   const e = EMPRESA_DOC;
-  const logo = origin ? `${origin}${e.logoUrl}` : e.logoUrl;
+  const logo = origin && e.logoUrl ? `${origin}${e.logoUrl}` : e.logoUrl;
+  // El logo ya trae el nombre: solo se escribe aparte si no hay logo. Las lineas
+  // de contacto vacias se omiten (antes salia "Tel:" pelado).
+  const lineas: string[] = [];
+  if (!logo) lineas.push(`<div style="font-weight:700;font-size:12px;">${esc(e.nombre)}</div>`);
+  if (e.telefono) lineas.push(`<div style="font-size:10px;">Tel: ${esc(e.telefono)}</div>`);
+  for (const d of e.direccion.filter(Boolean)) {
+    lineas.push(`<div style="font-size:10px;">${esc(d)}</div>`);
+  }
   return `
   <div style="text-align:center;padding-bottom:6px;margin-bottom:6px;border-bottom:1px dashed #000;">
-    ${logo ? `<img src="${esc(logo)}" alt="${esc(e.nombre)}" style="max-width:150px;max-height:72px;width:auto;height:auto;object-fit:contain;display:inline-block;margin:0 auto 4px;" />` : ""}
-    <div style="font-weight:700;font-size:12px;">${esc(e.nombre)}</div>
-    <div style="font-size:10px;">Tel: ${esc(e.telefono)}</div>
-    <div style="font-size:10px;">${esc(e.direccion[0])}</div>
-    <div style="font-size:10px;">${esc(e.direccion.slice(1).join(" · "))}</div>
+    ${logo ? `<img src="${esc(logo)}" alt="${esc(e.nombre)}" style="max-width:100%;max-height:48px;width:auto;height:auto;object-fit:contain;display:inline-block;margin:0 auto 4px;" />` : ""}
+    ${lineas.join("")}
   </div>`;
 }
