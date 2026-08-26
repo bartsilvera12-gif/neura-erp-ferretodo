@@ -30,12 +30,14 @@ export default function EntidadesBancariasPage() {
   // Form crear
   const [codigo, setCodigo] = useState("");
   const [nombre, setNombre] = useState("");
+  const [tasa, setTasa] = useState("");
   const [tipo, setTipo] = useState<TipoEntidad>("banco");
 
   // Edición inline
   const [editId, setEditId] = useState<string | null>(null);
   const [eCodigo, setECodigo] = useState("");
   const [eNombre, setENombre] = useState("");
+  const [eTasa, setETasa] = useState("");
   const [eTipo, setETipo] = useState<TipoEntidad>("banco");
 
   async function reload() {
@@ -53,9 +55,10 @@ export default function EntidadesBancariasPage() {
       tipo,
       activo: true,
       orden: lista.length,
+      tasa_porcentaje: Number(tasa) || 0,
     });
     if (!res.ok) { setError(res.error); return; }
-    setCodigo(""); setNombre(""); setTipo("banco");
+    setCodigo(""); setNombre(""); setTipo("banco"); setTasa("");
     await reload();
   }
 
@@ -65,6 +68,7 @@ export default function EntidadesBancariasPage() {
     setENombre(en.nombre);
     setETipo((en.tipo as TipoEntidad) ?? "otro");
     setError(null);
+    setETasa(String(en.tasa_porcentaje ?? 0));
   }
   async function saveEdit() {
     if (!editId) return;
@@ -72,6 +76,7 @@ export default function EntidadesBancariasPage() {
       codigo: eCodigo.trim() || null,
       nombre: eNombre.trim(),
       tipo: eTipo,
+      tasa_porcentaje: Number(eTasa) || 0,
     });
     if (!res.ok) { setError(res.error); return; }
     setEditId(null);
@@ -116,6 +121,12 @@ export default function EntidadesBancariasPage() {
             {TIPOS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600">Tasa / arancel (%)</label>
+          <input type="number" step="0.01" min="0" max="100" className={inputClass}
+            value={tasa} onChange={(e) => setTasa(e.target.value)} placeholder="Ej: 4.50" />
+          <p className="mt-1 text-xs text-slate-400">Lo que descuenta la tarjeta o el banco por cada cobro. Dejalo en 0 si no cobra nada.</p>
+        </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-medium text-white hover:bg-[#0284C7]">
           Crear entidad
@@ -129,6 +140,7 @@ export default function EntidadesBancariasPage() {
               <th className="py-3 pr-4 font-semibold">Código</th>
               <th className="py-3 pr-4 font-semibold">Nombre</th>
               <th className="py-3 pr-4 font-semibold">Tipo</th>
+                <th className="py-3 pr-4 font-semibold text-right">Tasa</th>
               <th className="py-3 pr-4 font-semibold">Activo</th>
               <th className="py-3 font-semibold">Acciones</th>
             </tr>
@@ -152,6 +164,14 @@ export default function EntidadesBancariasPage() {
                       {TIPOS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   ) : tipoLabel(en.tipo)}
+                </td>
+                <td className="py-3 pr-4 text-right tabular-nums text-slate-600">
+                  {editId === en.id ? (
+                    <input type="number" step="0.01" min="0" max="100" className={`${inputClass} w-24 text-right`}
+                      value={eTasa} onChange={(e) => setETasa(e.target.value)} />
+                  ) : (Number(en.tasa_porcentaje ?? 0) > 0
+                        ? `${Number(en.tasa_porcentaje).toFixed(2)}%`
+                        : <span className="text-slate-300">—</span>)}
                 </td>
                 <td className="py-3 pr-4">
                   <button type="button" onClick={() => toggleActivo(en)}

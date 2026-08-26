@@ -15,6 +15,13 @@ const TIPOS: TipoEntidad[] = ["caja", "banco", "tarjeta", "billetera", "otro"];
 function normTipo(v: unknown): TipoEntidad {
   return TIPOS.includes(v as TipoEntidad) ? (v as TipoEntidad) : "otro";
 }
+/** Arancel en %: 0..100, con 2 decimales. Fuera de rango o invalido -> 0. */
+function cleanTasa(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(100, Math.round(n * 100) / 100);
+}
+
 function cleanCodigo(v: unknown): string | null {
   const s = typeof v === "string" ? v.trim().toUpperCase() : "";
   return s.length > 0 ? s.slice(0, 20) : null;
@@ -50,6 +57,7 @@ export async function POST(request: NextRequest) {
         codigo: cleanCodigo(b.codigo),
         nombre: nombre.slice(0, 120),
         tipo: normTipo(b.tipo),
+        tasa_porcentaje: cleanTasa(b.tasa_porcentaje),
         activo: b.activo === false ? false : true,
         orden,
       });
@@ -82,6 +90,7 @@ export async function PATCH(request: NextRequest) {
     if (b.tipo !== undefined) patch.tipo = normTipo(b.tipo);
     if (b.activo !== undefined) patch.activo = b.activo === true;
     if (b.orden !== undefined && Number.isFinite(Number(b.orden))) patch.orden = Math.floor(Number(b.orden));
+    if (b.tasa_porcentaje !== undefined) patch.tasa_porcentaje = cleanTasa(b.tasa_porcentaje);
     try {
       const entidad = await updateEntidadBancaria(schema, ctx.auth.empresa_id, id, patch);
       if (!entidad) return NextResponse.json(errorResponse("Entidad no encontrada."), { status: 404 });

@@ -143,7 +143,9 @@ export default function ConciliacionReportePage() {
                     <tr className="border-b text-slate-500">
                       <th className="py-2.5 pr-4 font-medium">Entidad</th>
                       <th className="py-2.5 pr-4 font-medium text-right">Operaciones</th>
-                      <th className="py-2.5 font-medium text-right">Total</th>
+                      <th className="py-2.5 pr-4 font-medium text-right">Bruto</th>
+                      <th className="py-2.5 pr-4 font-medium text-right">Arancel</th>
+                      <th className="py-2.5 font-medium text-right">Neto</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -151,7 +153,11 @@ export default function ConciliacionReportePage() {
                       <tr key={i} className="border-b border-slate-100 last:border-0">
                         <td className="py-2.5 pr-4 text-slate-700">{e.clave}</td>
                         <td className="py-2.5 pr-4 text-right tabular-nums text-slate-600">{e.cantidad}</td>
-                        <td className="py-2.5 text-right tabular-nums font-semibold text-slate-800">{formatGs(e.total)}</td>
+                        <td className="py-2.5 pr-4 text-right tabular-nums text-slate-600">{formatGs(e.total)}</td>
+                        <td className="py-2.5 pr-4 text-right tabular-nums text-amber-700">
+                          {(e.comision ?? 0) > 0 ? `− ${formatGs(e.comision ?? 0)}` : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2.5 text-right tabular-nums font-semibold text-slate-800">{formatGs(e.neto ?? e.total)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -9,6 +9,8 @@ export interface EntidadBancaria {
   tipo: string | null;
   activo: boolean;
   orden: number;
+  /** Arancel que descuenta la entidad por cobro, en %. 0 = sin costo. */
+  tasa_porcentaje?: number;
 }
 
 export interface EntidadBancariaInput {
@@ -17,6 +19,7 @@ export interface EntidadBancariaInput {
   tipo: TipoEntidad;
   activo?: boolean;
   orden?: number;
+  tasa_porcentaje?: number;
 }
 
 type Res<T> = { ok: true; data: T } | { ok: false; error: string };

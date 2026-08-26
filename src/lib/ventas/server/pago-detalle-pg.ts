@@ -36,6 +36,8 @@ export interface EntidadBancariaRow {
   tipo: string | null;
   activo: boolean;
   orden: number;
+  /** Arancel que descuenta la entidad por cobro, en %. 0 = sin costo. */
+  tasa_porcentaje: number;
 }
 
 export interface EntidadBancariaInput {
@@ -44,9 +46,10 @@ export interface EntidadBancariaInput {
   tipo: TipoEntidad;
   activo: boolean;
   orden: number;
+  tasa_porcentaje: number;
 }
 
-const ENT_COLS = "id, codigo, nombre, tipo, activo, orden";
+const ENT_COLS = "id, codigo, nombre, tipo, activo, orden, tasa_porcentaje";
 
 /**
  * Lista entidades de la empresa. Por defecto solo activas (selector de cobro);
@@ -118,6 +121,7 @@ export async function updateEntidadBancaria(
   if (patch.tipo !== undefined) add("tipo", patch.tipo);
   if (patch.activo !== undefined) add("activo", patch.activo, "::boolean");
   if (patch.orden !== undefined) add("orden", patch.orden, "::int");
+  if (patch.tasa_porcentaje !== undefined) add("tasa_porcentaje", patch.tasa_porcentaje, "::numeric");
   if (sets.length === 0) {
     const { rows } = await pool().query<EntidadBancariaRow>(
       `SELECT ${ENT_COLS} FROM ${t} WHERE id=$1::uuid AND empresa_id=$2::uuid`, [id, empresaId]);

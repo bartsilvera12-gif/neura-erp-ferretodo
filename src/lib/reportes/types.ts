@@ -158,6 +158,10 @@ export interface ConciliacionAgrupado {
   clave: string;   // método o entidad
   cantidad: number;
   total: number;
+  /** Arancel que se lleva la entidad (solo en el agrupado por entidad). */
+  comision?: number;
+  /** Lo que entra realmente: total − comisión. */
+  neto?: number;
 }
 
 /**

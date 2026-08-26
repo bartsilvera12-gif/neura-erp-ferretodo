@@ -412,7 +412,8 @@ export async function getReporteConciliacion(
              COALESCE(NULLIF(d.entidad_nombre_snapshot,''),'(sin entidad)') AS entidad,
              eb.codigo AS entidad_codigo,
              d.referencia AS referencia, d.titular AS titular, d.monto::float8 AS monto,
-             d.conciliacion_estado AS estado
+             d.conciliacion_estado AS estado,
+             COALESCE(eb.tasa_porcentaje, 0)::float8 AS tasa
         FROM ${tD} d
         JOIN ${tV} v ON v.id=d.venta_id AND v.empresa_id=d.empresa_id
         LEFT JOIN ${tCli} c ON c.id=v.cliente_id AND c.empresa_id=v.empresa_id
@@ -425,7 +426,8 @@ export async function getReporteConciliacion(
              COALESCE(NULLIF(cc.entidad_nombre_snapshot,''),'(sin entidad)') AS entidad,
              eb.codigo AS entidad_codigo,
              cc.referencia AS referencia, cc.titular AS titular, cc.monto::float8 AS monto,
-             cc.conciliacion_estado AS estado
+             cc.conciliacion_estado AS estado,
+             COALESCE(eb.tasa_porcentaje, 0)::float8 AS tasa
         FROM ${tCob} cc
         LEFT JOIN ${tV} vc ON vc.id=cc.venta_id AND vc.empresa_id=cc.empresa_id
         LEFT JOIN ${tCxc} cta ON cta.id=cc.cuenta_por_cobrar_id AND cta.empresa_id=cc.empresa_id
@@ -437,13 +439,20 @@ export async function getReporteConciliacion(
 
   const movsQ = p.query<ConciliacionMovRow>(
     `${movsCTE} SELECT id, tipo, fecha, numero, cliente, metodo AS metodo_pago, entidad, entidad_codigo, referencia, titular, monto, estado FROM movs ORDER BY (estado='pendiente') DESC, fecha DESC`, args);
-  const totQ = p.query<{ cantidad: number; total: number }>(
-    `${movsCTE} SELECT count(*)::int AS cantidad, COALESCE(SUM(monto),0)::float8 AS total FROM movs`, args);
+  const totQ = p.query<{ cantidad: number; total: number; comision: number; neto: number }>(
+    `${movsCTE} SELECT count(*)::int AS cantidad,
+            COALESCE(SUM(monto),0)::float8 AS total,
+            COALESCE(SUM(monto * tasa / 100.0),0)::float8 AS comision,
+            COALESCE(SUM(monto - monto * tasa / 100.0),0)::float8 AS neto
+       FROM movs`, args);
   const porMetodoQ = p.query<ConciliacionAgrupado>(
     `${movsCTE} SELECT metodo AS clave, count(*)::int AS cantidad, COALESCE(SUM(monto),0)::float8 AS total
        FROM movs GROUP BY metodo ORDER BY total DESC`, args);
-  const porEntidadQ = p.query<ConciliacionAgrupado>(
-    `${movsCTE} SELECT entidad AS clave, count(*)::int AS cantidad, COALESCE(SUM(monto),0)::float8 AS total
+  const porEntidadQ = p.query<ConciliacionAgrupado & { comision: number; neto: number }>(
+    `${movsCTE} SELECT entidad AS clave, count(*)::int AS cantidad,
+            COALESCE(SUM(monto),0)::float8 AS total,
+            COALESCE(SUM(monto * tasa / 100.0),0)::float8 AS comision,
+            COALESCE(SUM(monto - monto * tasa / 100.0),0)::float8 AS neto
        FROM movs GROUP BY entidad ORDER BY total DESC`, args);
 
   const [movs, tot, porMetodo, porEntidad] = await Promise.all([movsQ, totQ, porMetodoQ, porEntidadQ]);
@@ -470,7 +479,7 @@ export async function getReporteConciliacion(
     totalCobrado: num(tot.rows[0]?.total),
     cantidadOperaciones: num(tot.rows[0]?.cantidad),
     porMetodo: porMetodo.rows.map((r) => ({ clave: r.clave, cantidad: num(r.cantidad), total: num(r.total) })),
-    porEntidad: porEntidad.rows.map((r) => ({ clave: r.clave, cantidad: num(r.cantidad), total: num(r.total) })),
+    porEntidad: porEntidad.rows.map((r) => ({ clave: r.clave, cantidad: num(r.cantidad), total: num(r.total), comision: num(r.comision), neto: num(r.neto) })),
     movimientos,
   };
 }
