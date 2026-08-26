@@ -66,6 +66,8 @@ export interface Venta {
   cliente_id?: string | null;
   /** Nombre del cliente (razón social / contacto) para mostrar y filtrar en el listado. */
   cliente_nombre?: string | null;
+  /** Teléfono del cliente, para compartir el detalle por WhatsApp. */
+  cliente_telefono?: string | null;
 
   /** Factura ERP linkeada por el puente venta→factura (SIFEN). NULL si fue solo ticket. */
   factura_id?: string | null;

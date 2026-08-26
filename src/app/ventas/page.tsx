@@ -87,6 +87,31 @@ function ivaResumen(v: Venta): string {
 
 // ── Componente principal ───────────────────────────────────────────────────────
 
+/**
+ * Comparte el detalle de una venta por WhatsApp.
+ *
+ * Abre WhatsApp con el mensaje ya escrito (wa.me). No adjunta el comprobante:
+ * mandar archivos automaticamente requiere la API de WhatsApp Business, que
+ * necesita proveedor, credenciales y costo mensual.
+ */
+function compartirWhatsApp(v: Venta, fmt: (n: number) => string) {
+  const lineas = [
+    `*${v.numero_control}*`,
+    ...v.items.slice(0, 20).map((i) => `• ${i.cantidad} x ${i.producto_nombre} — ${fmt(i.total_linea)}`),
+    v.items.length > 20 ? `…y ${v.items.length - 20} producto(s) más` : "",
+    "",
+    `*TOTAL: ${fmt(v.total)}*`,
+    v.tipo_venta === "CREDITO" ? `Crédito a ${v.plazo_dias ?? 0} días` : "Contado",
+    "",
+    "¡Gracias por su compra!",
+  ].filter(Boolean);
+  const texto = encodeURIComponent(lineas.join("\n"));
+  const tel = (v.cliente_telefono ?? "").replace(/\D/g, "");
+  // Paraguay: los numeros locales arrancan con 0, wa.me los quiere con 595.
+  const destino = tel ? (tel.startsWith("595") ? tel : `595${tel.replace(/^0+/, "")}`) : "";
+  window.open(`https://wa.me/${destino}?text=${texto}`, "_blank", "noopener");
+}
+
 export default function VentasPage() {
   const [todas,      setTodas]      = useState<Venta[]>([]);
   const [busqueda,   setBusqueda]   = useState("");
@@ -417,6 +442,27 @@ export default function VentasPage() {
                             >
                               {v.numero_factura ? `Factura ${v.numero_factura}` : "Factura"}
                             </Link>
+                          )}
+                          {!isAnulada && (
+                            <button
+                              type="button"
+                              onClick={() => compartirWhatsApp(v, formatGs)}
+                              className="inline-flex items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                              title={v.cliente_telefono ? `Enviar el detalle por WhatsApp al ${v.cliente_telefono}` : "Abrir WhatsApp con el detalle (elegí el contacto)"}
+                            >
+                              WhatsApp
+                            </button>
+                          )}
+                          {v.tipo_venta === "CREDITO" && !isAnulada && (
+                            <a
+                              href={`/api/ventas/${v.id}/pagare?auto=1`}
+                              target="_blank"
+                              rel="noopener"
+                              className="inline-flex items-center justify-center rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+                              title="Imprimir el pagaré de esta venta a crédito"
+                            >
+                              Pagaré
+                            </a>
                           )}
                           {v.genera_nota_remision && (
                             <a

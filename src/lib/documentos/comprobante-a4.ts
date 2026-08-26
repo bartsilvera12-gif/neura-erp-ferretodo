@@ -6,7 +6,7 @@
  */
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -15,7 +15,7 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function fmtGs(v: number): string {
+export function fmtGs(v: number): string {
   return Math.round(v).toLocaleString("es-PY");
 }
 
@@ -35,7 +35,7 @@ function fechaLarga(iso: string, ciudad = "HERNANDARIAS"): string {
 }
 
 /** Numero entero a letras (guaranies). Soporta hasta miles de millones. */
-function numeroALetras(n: number): string {
+export function numeroALetras(n: number): string {
   const num = Math.round(Math.max(0, Number.isFinite(n) ? n : 0));
   if (num === 0) return "CERO";
   const unidades = ["", "UN", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"];

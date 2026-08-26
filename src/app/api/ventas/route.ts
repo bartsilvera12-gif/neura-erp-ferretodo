@@ -125,10 +125,11 @@ export async function GET(request: NextRequest) {
       ...new Set(ventasRows.map((v) => v.cliente_id).filter((x): x is string => !!x)),
     ];
     const clienteNombreById = new Map<string, string>();
+    const clienteTelById = new Map<string, string>();
     if (clienteIds.length > 0) {
       const cliQ = await ctx.supabase
         .from("clientes")
-        .select("id, empresa, nombre_contacto, nombre")
+        .select("id, empresa, nombre_contacto, nombre, telefono")
         .eq("empresa_id", empresaId)
         .in("id", clienteIds);
       if (!cliQ.error) {
@@ -136,6 +137,8 @@ export async function GET(request: NextRequest) {
         for (const row of (cliQ.data ?? []) as Array<Record<string, unknown>>) {
           const nombre = s(row.empresa) || s(row.nombre_contacto) || s(row.nombre);
           if (nombre) clienteNombreById.set(String(row.id), nombre);
+          const tel = s(row.telefono);
+          if (tel) clienteTelById.set(String(row.id), tel);
         }
       }
     }
@@ -175,6 +178,7 @@ export async function GET(request: NextRequest) {
         usuario_nombre: r.usuario_nombre ?? null,
         cliente_id: r.cliente_id ?? null,
         cliente_nombre: r.cliente_id ? clienteNombreById.get(r.cliente_id) ?? null : null,
+        cliente_telefono: r.cliente_id ? clienteTelById.get(r.cliente_id) ?? null : null,
         factura_id: r.factura_id ?? null,
         numero_factura: r.factura_id ? numeroFacturaByIdMap.get(r.factura_id) ?? null : null,
         factura_estado_sifen: r.factura_id ? estadoSifenByFacturaMap.get(r.factura_id) ?? null : null,
