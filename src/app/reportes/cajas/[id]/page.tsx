@@ -40,6 +40,7 @@ const MEDIO_LABEL: Record<MedioPagoCaja, string> = {
   efectivo: "Efectivo",
   tarjeta: "Tarjeta",
   transferencia: "Transferencia",
+  cheque: "Cheque",
   otro: "Otro",
 };
 

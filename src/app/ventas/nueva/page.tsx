@@ -201,7 +201,7 @@ export default function NuevaVentaPage() {
 
   // ── Pago mixto (contado con varios metodos) ───────────────────────────────
   type PagoMixtoLinea = {
-    metodo: "efectivo" | "transferencia" | "tarjeta";
+    metodo: "efectivo" | "transferencia" | "tarjeta" | "cheque";
     monto: string;
     entidad_id: string;
     referencia: string;
@@ -1490,11 +1490,12 @@ export default function NuevaVentaPage() {
                       )}
 
                       {!pagoMixto && (
-                      <div className="grid grid-cols-3 gap-1.5">
+                      <div className="grid grid-cols-2 gap-1.5">
                         {([
                           { v: "efectivo", label: "Efectivo" },
                           { v: "transferencia", label: "Transferencia" },
                           { v: "tarjeta", label: "Tarjeta/Débito" },
+                          { v: "cheque", label: "Cheque" },
                         ] as { v: MetodoPago; label: string }[]).map((m) => (
                           <button
                             key={m.v}
@@ -1534,7 +1535,7 @@ export default function NuevaVentaPage() {
                       )}
 
                       {/* Transferencia / Tarjeta: resumen compacto + editar */}
-                      {!pagoMixto && (metodoPago === "transferencia" || metodoPago === "tarjeta") && (
+                      {!pagoMixto && (metodoPago === "transferencia" || metodoPago === "tarjeta" || metodoPago === "cheque") && (
                         <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs space-y-1">
                           <div className="flex items-center justify-between">
                             <span className="font-medium text-slate-700">
@@ -1802,7 +1803,7 @@ export default function NuevaVentaPage() {
 // ── Combobox categoría con búsqueda (paleta Zentra) ───────────────────────────
 // ── Editor de pago mixto (2+ metodos por venta) ───────────────────────────────
 type PagoMixtoLinea = {
-  metodo: "efectivo" | "transferencia" | "tarjeta";
+  metodo: "efectivo" | "transferencia" | "tarjeta" | "cheque";
   monto: string;
   entidad_id: string;
   referencia: string;
@@ -1848,7 +1849,7 @@ function PagosMixtoEditor({
   return (
     <div className="space-y-3">
       {pagos.map((p, i) => {
-        const needEntidad = p.metodo === "transferencia" || p.metodo === "tarjeta";
+        const needEntidad = p.metodo === "transferencia" || p.metodo === "tarjeta" || p.metodo === "cheque";
         return (
         <div key={i} className="rounded-lg border border-slate-200 bg-white p-3">
           {/* Grid fijo: metodo | monto | entidad | ref | titular | +resto | ×
@@ -1864,6 +1865,7 @@ function PagosMixtoEditor({
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
               <option value="tarjeta">Tarjeta/Débito</option>
+              <option value="cheque">Cheque</option>
             </select>
             <input
               type="number"
@@ -1936,6 +1938,7 @@ function PagosMixtoEditor({
               <option value="efectivo">Efectivo</option>
               <option value="transferencia">Transferencia</option>
               <option value="tarjeta">Tarjeta/Débito</option>
+              <option value="cheque">Cheque</option>
             </select>
             <input
               type="number"

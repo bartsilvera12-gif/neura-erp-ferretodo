@@ -14,7 +14,7 @@ function pool() {
   return p;
 }
 
-export type MetodoPagoDetalle = "efectivo" | "transferencia" | "tarjeta" | "qr" | "billetera" | "otro";
+export type MetodoPagoDetalle = "efectivo" | "transferencia" | "tarjeta" | "cheque" | "qr" | "billetera" | "otro";
 
 export interface PagoDetalleInput {
   metodo_pago: MetodoPagoDetalle;

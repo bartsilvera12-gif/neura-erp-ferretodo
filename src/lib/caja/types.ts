@@ -19,7 +19,7 @@ import type { ArqueoItem } from "./denominaciones";
 
 export type EstadoCaja = "abierta" | "en_cierre" | "cerrada";
 export type TipoMovimientoCaja = "ingreso" | "egreso" | "retiro" | "ajuste";
-export type MedioPagoCaja = "efectivo" | "tarjeta" | "transferencia" | "otro";
+export type MedioPagoCaja = "efectivo" | "tarjeta" | "transferencia" | "cheque" | "otro";
 
 export type { ArqueoItem, TipoDenominacion, Denominacion } from "./denominaciones";
 

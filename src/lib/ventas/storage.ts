@@ -73,7 +73,7 @@ export async function getVentas(): Promise<Venta[]> {
  */
 /** Un pago individual dentro de un pago mixto. */
 export interface PagoLinea {
-  metodo_pago: "efectivo" | "transferencia" | "tarjeta";
+  metodo_pago: "efectivo" | "transferencia" | "tarjeta" | "cheque";
   monto: number;
   entidad_bancaria_id?: string | null;
   entidad_nombre_snapshot?: string | null;

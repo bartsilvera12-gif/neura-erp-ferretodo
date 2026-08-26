@@ -1,10 +1,11 @@
 /**
  * Notificaciones de comisiones para Ferretodo.
  *
- * Dos disparadores:
- *  - Cruce de tramo (A): al confirmar una venta, si el vendedor cruzó los umbrales
- *    de 20M o 35M de GANANCIA acumulada este mes.
- *  - Cierre mensual (B): el día 1 de cada mes, se registra un aviso con las
+ * Ferretodo comisiona un 5% PLANO sobre la ganancia (sin tramos), asi que no hay
+ * umbrales que "desbloquear": el aviso de cruce de tramo queda desactivado y solo
+ * se usa el cierre mensual.
+ *
+ *  - Cierre mensual: el día 1 de cada mes, se registra un aviso con las
  *    comisiones totales del mes anterior por vendedor.
  *
  * Ambas insertan en la tabla `notificaciones` (misma que usa la campanita).
@@ -13,9 +14,8 @@
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 
-const UMBRALES = [20_000_000, 35_000_000];
-const PORCENTAJES = [5, 7];
-const TIPO_CRUCE = "comision_cruce_tramo";
+/** Ferretodo: 5% plano sobre la ganancia (sin tramos). */
+const PORCENTAJE_COMISION = 5;
 const TIPO_MENSUAL = "comision_mensual";
 
 function pool() {
@@ -77,32 +77,14 @@ async function gananciaPorVendedor(
  * uno, inserta una notificación (con dedupe por umbral+mes).
  */
 export async function evaluarCruceTramoComision(
-  schemaRaw: string,
-  empresaId: string,
-  vendedorNombre: string,
-  ventaGanancia: number
+  _schemaRaw: string,
+  _empresaId: string,
+  _vendedorNombre: string,
+  _ventaTotal: number
 ): Promise<void> {
-  if (ventaGanancia <= 0 || !vendedorNombre) return;
-  const schema = assertAllowedChatDataSchema(schemaRaw);
-  const { desde, hasta, label } = pyMonthBounds(0);
-  const totales = await gananciaPorVendedor(schema, empresaId, desde, hasta);
-  const despues = totales.get(vendedorNombre) ?? ventaGanancia;
-  const antes = despues - ventaGanancia;
-
-  const t = quoteSchemaTable(schema, "notificaciones");
-  for (let i = 0; i < UMBRALES.length; i++) {
-    const umbral = UMBRALES[i];
-    if (antes < umbral && despues >= umbral) {
-      const titulo = `Comisión ${PORCENTAJES[i]}% desbloqueada`;
-      const mensaje = `${vendedorNombre} superó ${new Intl.NumberFormat("es-PY").format(umbral)} de ganancia en ${label}. Ahora comisiona al ${PORCENTAJES[i]}%.`;
-      await pool().query(
-        `INSERT INTO ${t} (empresa_id, tipo, titulo, mensaje, url)
-         VALUES ($1::uuid, $2, $3, $4, '/comisiones')
-         ON CONFLICT DO NOTHING`,
-        [empresaId, `${TIPO_CRUCE}_${umbral}_${desde}_${vendedorNombre}`.slice(0, 60), titulo, mensaje]
-      );
-    }
-  }
+  // Ferretodo comisiona 5% plano: no existen tramos que cruzar, asi que no se
+  // emite ninguna notificacion. Se mantiene la firma para no tocar el caller.
+  return;
 }
 
 /**
@@ -132,10 +114,7 @@ export async function evaluarComisionesMensuales(schemaRaw: string, empresaId: s
   let totalComision = 0;
   const lineas: string[] = [];
   for (const [vend, gan] of totales) {
-    let pct = 0;
-    if (gan >= UMBRALES[1]) pct = PORCENTAJES[1];
-    else if (gan >= UMBRALES[0]) pct = PORCENTAJES[0];
-    const com = Math.round((gan * pct) / 100);
+    const com = Math.round((gan * PORCENTAJE_COMISION) / 100);
     totalComision += com;
     if (com > 0) lineas.push(`${vend}: ${new Intl.NumberFormat("es-PY").format(com)}`);
   }

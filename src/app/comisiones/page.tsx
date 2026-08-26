@@ -77,7 +77,7 @@ export default function ComisionesPage() {
   const escalaLabel = useCallback((e: Escala) => {
     const desde = fmtGs(e.desde);
     const hasta = e.hasta === null ? "∞" : fmtGs(e.hasta);
-    return `${desde} → ${hasta} · ${e.porcentaje}%`;
+    return `${e.porcentaje}% de la ganancia (sin mínimo ni tramos)`;
   }, []);
 
   const inputC = "rounded-md border border-slate-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
@@ -95,10 +95,10 @@ export default function ComisionesPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Comisiones por vendedor</h1>
-          <p className="mt-1 text-sm text-slate-500">Calculadas sobre la ganancia acumulada del período (precio venta − costo).</p>
+          <p className="mt-1 text-sm text-slate-500">5% sobre la ganancia generada en el período (precio venta − costo).</p>
           {escalas.length > 0 && (
             <div className="mt-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Escalas activas</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Regla activa</p>
               {explicacion}
             </div>
           )}

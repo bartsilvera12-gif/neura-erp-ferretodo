@@ -10,6 +10,7 @@ import type { Venta, LineaVenta } from "@/lib/ventas/types";
 import { createServiceRoleClientWithDbSchema } from "@/lib/supabase/empresa-data-schema";
 import { estaFacturado, marcarFacturado } from "@/lib/caja/facturacion";
 import { getFacturacionModo } from "@/lib/facturacion/server/facturacion-modo-pg";
+import type { MetodoPagoDetalle } from "@/lib/ventas/server/pago-detalle-pg";
 
 /** Error tipado: el pedido que se intenta facturar ya tiene venta. */
 class PedidoYaFacturadoError extends Error {
@@ -330,7 +331,13 @@ export async function POST(request: NextRequest) {
 
       if (pagosArr && pagosArr.length > 0) {
         for (const p of pagosArr) {
-          const m = typeof p.metodo_pago === "string" ? p.metodo_pago : "efectivo";
+          // Se valida contra la lista permitida: antes entraba cualquier string
+          // y podia romper el CHECK de la tabla.
+          const METODOS_OK = ["efectivo", "transferencia", "tarjeta", "cheque", "qr", "billetera", "otro"] as const;
+          const mRaw = typeof p.metodo_pago === "string" ? p.metodo_pago.trim().toLowerCase() : "";
+          const m: MetodoPagoDetalle = (METODOS_OK as readonly string[]).includes(mRaw)
+            ? (mRaw as MetodoPagoDetalle)
+            : "efectivo";
           const monto = Number(p.monto);
           if (!Number.isFinite(monto) || monto <= 0) continue;
           await insertVentaPagoDetalle(schema, auth.empresa_id, ventaId, {

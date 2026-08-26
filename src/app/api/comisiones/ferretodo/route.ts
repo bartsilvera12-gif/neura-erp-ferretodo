@@ -18,18 +18,14 @@ import { API_ERRORS } from "@/lib/api/errors";
  * Se aplica el porcentaje del tramo al TOTAL de ganancia (no solo el excedente).
  */
 
+/** Ferretodo: porcentaje unico sobre la ganancia (sin tramos). */
+const PORCENTAJE_COMISION = 5;
+
 const ESCALAS = [
-  { desde: 0,          hasta: 20_000_000, porcentaje: 0 },
-  { desde: 20_000_000, hasta: 35_000_000, porcentaje: 5 },
-  { desde: 35_000_000, hasta: null,       porcentaje: 7 },
+  { desde: 0, hasta: null, porcentaje: PORCENTAJE_COMISION },
 ];
 
-function tramoParaGanancia(ganancia: number) {
-  for (const e of ESCALAS) {
-    if (ganancia >= e.desde && (e.hasta === null || ganancia < e.hasta)) {
-      return e;
-    }
-  }
+function tramoUnico() {
   return ESCALAS[0];
 }
 
@@ -101,7 +97,7 @@ export async function GET(request: NextRequest) {
     // 4) Aplicar tramo por vendedor
     const filas = [...porVendedor.values()]
       .map((a) => {
-        const tramo = tramoParaGanancia(a.ganancia);
+        const tramo = tramoUnico();
         const comision = Math.max(0, Math.round((a.ganancia * tramo.porcentaje) / 100));
         return {
           vendedor: a.vendedor,
