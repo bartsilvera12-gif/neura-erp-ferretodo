@@ -48,6 +48,21 @@ export default function HistorialClientePage() {
   const [cargando, setCargando] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [verDetalle, setVerDetalle] = useState(true);
+  // Seleccion para imprimir varios comprobantes de una sola vez.
+  const [sel, setSel] = useState<Set<string>>(new Set());
+
+  function toggleSel(id: string) {
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+  function imprimirComprobantes() {
+    const ids = [...sel];
+    if (ids.length === 0) return;
+    window.open(`/api/ventas/comprobantes?ids=${ids.join(",")}&auto=1`, "_blank", "noopener");
+  }
 
   useEffect(() => {
     fetchWithSupabaseSession("/api/clientes", { cache: "no-store" })
@@ -75,6 +90,7 @@ export default function HistorialClientePage() {
       const j = await r.json();
       if (!r.ok || j?.success === false) throw new Error(j?.error ?? `Error ${r.status}`);
       setData(j.data as Payload);
+      setSel(new Set());
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
       setData(null);
@@ -199,16 +215,32 @@ export default function HistorialClientePage() {
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
                   <h2 className="text-sm font-bold text-slate-800">Detalle por compra</h2>
-                  <label className="flex items-center gap-2 text-xs text-slate-600 print:hidden">
-                    <input type="checkbox" checked={verDetalle} onChange={(e) => setVerDetalle(e.target.checked)} />
-                    Mostrar productos de cada compra
-                  </label>
+                  <div className="flex items-center gap-3 print:hidden">
+                    {sel.size > 0 && (
+                      <>
+                        <span className="text-xs text-slate-500">{sel.size} seleccionada{sel.size === 1 ? "" : "s"}</span>
+                        <button type="button" onClick={imprimirComprobantes}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-[#4FAEB2] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#3F8E91]">
+                          <Printer className="h-3.5 w-3.5" /> Imprimir comprobantes
+                        </button>
+                        <button type="button" onClick={() => setSel(new Set())} className="text-xs text-slate-500 hover:underline">Limpiar</button>
+                      </>
+                    )}
+                    <button type="button" onClick={() => setSel(new Set(data.ventas.map((v) => v.id)))}
+                      className="text-xs text-slate-500 hover:underline">Seleccionar todas</button>
+                    <label className="flex items-center gap-2 text-xs text-slate-600">
+                      <input type="checkbox" checked={verDetalle} onChange={(e) => setVerDetalle(e.target.checked)} />
+                      Mostrar productos
+                    </label>
+                  </div>
                 </div>
                 <div className="divide-y divide-slate-100">
                   {data.ventas.map((v) => (
                     <div key={v.id} className="px-5 py-3">
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <div className="flex items-baseline gap-3">
+                          <input type="checkbox" checked={sel.has(v.id)} onChange={() => toggleSel(v.id)}
+                            aria-label={`Seleccionar ${v.numero_control}`} className="print:hidden" />
                           <span className="font-mono text-xs text-slate-500">{v.numero_control}</span>
                           <span className="text-sm text-slate-700">{fmtFecha(v.fecha)}</span>
                           {v.tipo_venta === "CREDITO" && (
