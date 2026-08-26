@@ -19,19 +19,22 @@ type Fila = {
   ingresos: number;
   costo: number;
   ganancia: number;
-  tramo_desde: number;
-  tramo_hasta: number | null;
+  tipo: "porcentaje" | "monto_fijo";
   porcentaje: number;
+  monto_fijo: number | null;
+  estado: "retenida" | "liberada" | "pagada";
+  observacion: string | null;
+  personalizado: boolean;
   comision: number;
 };
 
 type Escala = { desde: number; hasta: number | null; porcentaje: number };
 
 type Payload = {
-  periodo: { desde: string; hasta: string };
+  periodo: { desde: string; hasta: string; mes: string };
   escalas: Escala[];
   por_vendedor: Fila[];
-  totales: { ventas: number; ingresos: number; costo: number; ganancia: number; comision: number };
+  totales: { ventas: number; ingresos: number; costo: number; ganancia: number; comision: number; comision_liberada: number };
 };
 
 function fmtGs(v: number) {
@@ -82,6 +85,52 @@ export default function ComisionesPage() {
 
   const inputC = "rounded-md border border-slate-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
 
+  // Edicion de la comision de un vendedor para el mes del periodo.
+  const [editando, setEditando] = useState<string | null>(null);
+  const [edit, setEdit] = useState<{ tipo: "porcentaje" | "monto_fijo"; valor: string; estado: string }>({
+    tipo: "porcentaje", valor: "5", estado: "retenida",
+  });
+  const [guardando, setGuardando] = useState(false);
+
+  function abrirEdicion(f: Fila) {
+    setEditando(f.vendedor);
+    setEdit({
+      tipo: f.tipo,
+      valor: String(f.tipo === "monto_fijo" ? (f.monto_fijo ?? 0) : f.porcentaje),
+      estado: f.estado,
+    });
+  }
+
+  async function guardarEdicion(vendedor: string) {
+    if (!data?.periodo?.mes) return;
+    setGuardando(true);
+    try {
+      const res = await fetchWithSupabaseSession("/api/comisiones/ferretodo/override", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendedor,
+          periodo: data.periodo.mes,
+          tipo: edit.tipo,
+          valor: Number(edit.valor) || 0,
+          estado: edit.estado,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j?.success) { setErr(j?.error ?? `Error ${res.status}`); return; }
+      setEditando(null);
+      await cargar();
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const ESTADO_BADGE: Record<string, string> = {
+    retenida: "bg-amber-100 text-amber-800",
+    liberada: "bg-sky-100 text-sky-700",
+    pagada: "bg-emerald-100 text-emerald-700",
+  };
+
   const explicacion = useMemo(() => (
     <ul className="ml-4 mt-1 list-disc space-y-0.5 text-xs text-slate-500">
       {escalas.map((e, i) => (
@@ -127,6 +176,7 @@ export default function ComisionesPage() {
           <StatCard label="Ingresos" value={fmtGs(totales.ingresos)} />
           <StatCard label="Ganancia total" value={fmtGs(totales.ganancia)} highlight />
           <StatCard label="Comisiones a pagar" value={fmtGs(totales.comision)} highlight />
+          <StatCard label="Liberadas / pagadas" value={fmtGs(totales.comision_liberada ?? 0)} />
         </div>
       )}
 
@@ -139,13 +189,14 @@ export default function ComisionesPage() {
               <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-500">Ingresos</th>
               <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-500">Costo</th>
               <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-500">Ganancia</th>
-              <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500">Tramo</th>
+              <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500">Regla</th>
+              <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500">Pago</th>
               <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-500">Comisión</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filas.length === 0 ? (
-              <tr><td colSpan={7} className="py-10 text-center text-sm text-slate-400">{cargando ? "Calculando…" : "Sin ventas en el período."}</td></tr>
+              <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-400">{cargando ? "Calculando…" : "Sin ventas en el período."}</td></tr>
             ) : (
               filas.map((f) => (
                 <tr key={f.vendedor} className="hover:bg-slate-50/50">
@@ -155,9 +206,46 @@ export default function ComisionesPage() {
                   <td className="px-4 py-3 text-right tabular-nums text-slate-500">{fmtGs(f.costo)}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-emerald-700">{fmtGs(f.ganancia)}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${f.porcentaje === 0 ? "bg-slate-100 text-slate-600" : f.porcentaje >= 7 ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>
-                      {f.porcentaje}%
-                    </span>
+                    {editando === f.vendedor ? (
+                      <div className="flex items-center justify-center gap-1.5">
+                        <select value={edit.tipo} onChange={(e) => setEdit((v) => ({ ...v, tipo: e.target.value as "porcentaje" | "monto_fijo" }))}
+                          className="rounded-md border border-slate-200 px-1.5 py-1 text-xs">
+                          <option value="porcentaje">%</option>
+                          <option value="monto_fijo">Monto fijo</option>
+                        </select>
+                        <input type="text" inputMode="numeric" value={edit.valor}
+                          onChange={(e) => setEdit((v) => ({ ...v, valor: e.target.value.replace(/[^\d.]/g, "") }))}
+                          className="w-24 rounded-md border border-slate-200 px-2 py-1 text-right text-xs tabular-nums" />
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => abrirEdicion(f)}
+                        title="Cambiar el porcentaje o poner un monto fijo para este mes"
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold hover:ring-2 hover:ring-[#4FAEB2]/30 ${f.personalizado ? "bg-violet-100 text-violet-700" : "bg-sky-100 text-sky-700"}`}>
+                        {f.tipo === "monto_fijo" ? fmtGs(f.monto_fijo ?? 0) : `${f.porcentaje}%`}
+                        {f.personalizado && <span className="text-[9px] uppercase">·edit</span>}
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {editando === f.vendedor ? (
+                      <div className="flex items-center justify-center gap-1.5">
+                        <select value={edit.estado} onChange={(e) => setEdit((v) => ({ ...v, estado: e.target.value }))}
+                          className="rounded-md border border-slate-200 px-1.5 py-1 text-xs">
+                          <option value="retenida">Retenida</option>
+                          <option value="liberada">Liberada</option>
+                          <option value="pagada">Pagada</option>
+                        </select>
+                        <button type="button" disabled={guardando} onClick={() => void guardarEdicion(f.vendedor)}
+                          className="rounded-md bg-[#4FAEB2] px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">
+                          {guardando ? "…" : "Guardar"}
+                        </button>
+                        <button type="button" onClick={() => setEditando(null)} className="text-xs text-slate-500 hover:underline">Cancelar</button>
+                      </div>
+                    ) : (
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${ESTADO_BADGE[f.estado] ?? "bg-slate-100 text-slate-600"}`}>
+                        {f.estado}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums font-bold text-slate-900">{fmtGs(f.comision)}</td>
                 </tr>
@@ -172,6 +260,7 @@ export default function ComisionesPage() {
                 <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-slate-700">{fmtGs(totales.ingresos)}</td>
                 <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-slate-500">{fmtGs(totales.costo)}</td>
                 <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-emerald-700">{fmtGs(totales.ganancia)}</td>
+                <td />
                 <td />
                 <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-slate-900">{fmtGs(totales.comision)}</td>
               </tr>
