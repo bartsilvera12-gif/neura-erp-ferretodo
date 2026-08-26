@@ -328,7 +328,7 @@ export async function hojaComprobanteA4(
   return { hoja: `  <div class="hoja">
     <div class="header-top">
       <div class="brand">
-        
+        <img src="/brand/ferretodo-logo.png" alt="Ferretodo" class="logo" />
         <div class="empresa-datos">
           <div class="razon">FERRETODO</div>
           <div>R.U.C.: —</div>
