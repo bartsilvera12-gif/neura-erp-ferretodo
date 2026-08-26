@@ -35,6 +35,7 @@ export default function NuevoProductoPage() {
     sku: "",
     codigo_barras: "",
     costo_promedio: "",
+    margen: "",
     markup: "",
     precio_venta: "",
     precio_mayorista: "",
@@ -238,10 +239,12 @@ export default function NuevoProductoPage() {
 
     if (!isNaN(costo) && costo > 0 && !isNaN(precio) && precio > 0) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
+      const nuevoMargen = ((precio - costo) / precio) * 100;
       setForm((prev) => ({
         ...prev,
         costo_promedio: String(costo),
         markup: nuevoMarkup.toFixed(2),
+        margen: nuevoMargen.toFixed(2),
       }));
     } else {
       setForm((prev) => ({ ...prev, costo_promedio: String(costo) }));
@@ -258,13 +261,42 @@ export default function NuevoProductoPage() {
 
     if (!isNaN(markup) && !isNaN(costo) && costo > 0) {
       const nuevoPrecio = costo * (1 + markup / 100);
+      const nuevoMargen = nuevoPrecio > 0 ? ((nuevoPrecio - costo) / nuevoPrecio) * 100 : 0;
       setForm((prev) => ({
         ...prev,
         markup: e.target.value,
         precio_venta: nuevoPrecio.toFixed(0),
+        margen: nuevoMargen.toFixed(2),
       }));
     } else {
       setForm((prev) => ({ ...prev, markup: e.target.value }));
+    }
+  }
+
+  /**
+   * Al cambiar el MARGEN deseado (sobre el precio de venta) → calcula el precio.
+   *
+   * Es la regla que pidio el cliente: no es lo mismo recargar 50% sobre el costo
+   * que ganar 50% sobre la venta. Para un margen m: precio = costo / (1 - m/100).
+   * Ej: costo 100 con 30% de margen -> 142,86 (una recarga del 42,86%).
+   */
+  function handleMargenChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setErrorDuplicado(null);
+    const margen = parseFloat(e.target.value);
+    const costo = parseFloat(form.costo_promedio);
+
+    // 100% o mas de margen es imposible: el precio se iria a infinito.
+    if (!isNaN(margen) && margen < 100 && !isNaN(costo) && costo > 0) {
+      const nuevoPrecio = costo / (1 - margen / 100);
+      const nuevoMarkup = ((nuevoPrecio - costo) / costo) * 100;
+      setForm((prev) => ({
+        ...prev,
+        margen: e.target.value,
+        precio_venta: nuevoPrecio.toFixed(0),
+        markup: nuevoMarkup.toFixed(2),
+      }));
+    } else {
+      setForm((prev) => ({ ...prev, margen: e.target.value }));
     }
   }
 
@@ -277,10 +309,12 @@ export default function NuevoProductoPage() {
 
     if (!isNaN(precio) && !isNaN(costo) && costo > 0) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
+      const nuevoMargen = ((precio - costo) / precio) * 100;
       setForm((prev) => ({
         ...prev,
         precio_venta: String(precio),
         markup: nuevoMarkup.toFixed(2),
+        margen: nuevoMargen.toFixed(2),
       }));
     } else {
       setForm((prev) => ({ ...prev, precio_venta: String(precio) }));
@@ -705,14 +739,36 @@ export default function NuevoProductoPage() {
 
               {showPrecioVenta && (
               <div>
-                <label className={labelClass}>Markup s/costo (%)</label>
+                <label className={labelClass}>Margen s/venta (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    name="margen"
+                    value={form.margen}
+                    onChange={handleMargenChange}
+                    placeholder="Ej: 30.00"
+                    className={`${inputClass} pr-8`}
+                    step="0.01"
+                    max="99.99"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">
+                    %
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs text-gray-400">Lo que te queda sobre el precio de venta.</p>
+              </div>
+              )}
+
+              {showPrecioVenta && (
+              <div>
+                <label className={labelClass}>Recarga s/costo (%)</label>
                 <div className="relative">
                   <input
                     type="number"
                     name="markup"
                     value={form.markup}
                     onChange={handleMarkupChange}
-                    placeholder="Ej: 50.00"
+                    placeholder="Ej: 42.86"
                     className={`${inputClass} pr-8`}
                     step="0.01"
                   />
@@ -720,7 +776,7 @@ export default function NuevoProductoPage() {
                     %
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs text-gray-400">(precio − costo) / costo</p>
+                <p className="mt-1.5 text-xs text-gray-400">Cuánto le sumás al costo.</p>
               </div>
               )}
 

@@ -46,6 +46,7 @@ export default function EditarProductoPage() {
     codigo_barras_interno: false,
     costo_promedio: "",
     markup: "",
+    margen: "",
     precio_venta: "",
     precio_mayorista: "",
     cantidad_minima_mayorista: "",
@@ -207,6 +208,7 @@ export default function EditarProductoPage() {
         codigo_barras_interno: p.codigo_barras_interno === true,
         costo_promedio: String(p.costo_promedio),
         markup: markup !== null ? markup.toFixed(2) : "",
+        margen: precio > 0 && costo > 1 ? (((precio - costo) / precio) * 100).toFixed(2) : "",
         precio_venta: String(p.precio_venta),
         precio_mayorista: p.precio_mayorista != null ? String(p.precio_mayorista) : "",
         cantidad_minima_mayorista: p.cantidad_minima_mayorista != null ? String(p.cantidad_minima_mayorista) : "",
@@ -298,9 +300,10 @@ export default function EditarProductoPage() {
     // numero absurdo.
     if (!isNaN(costo) && costo > 1 && !isNaN(precio) && precio > 0) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
-      setForm((prev) => ({ ...prev, costo_promedio: String(costo), markup: nuevoMarkup.toFixed(2) }));
+      const nuevoMargen = ((precio - costo) / precio) * 100;
+      setForm((prev) => ({ ...prev, costo_promedio: String(costo), markup: nuevoMarkup.toFixed(2), margen: nuevoMargen.toFixed(2) }));
     } else {
-      setForm((prev) => ({ ...prev, costo_promedio: String(costo), markup: "" }));
+      setForm((prev) => ({ ...prev, costo_promedio: String(costo), markup: "", margen: "" }));
     }
   }
 
@@ -311,9 +314,28 @@ export default function EditarProductoPage() {
     const costo = parseFloat(form.costo_promedio);
     if (!isNaN(markup) && !isNaN(costo) && costo > 1) {
       const nuevoPrecio = costo * (1 + markup / 100);
-      setForm((prev) => ({ ...prev, markup: e.target.value, precio_venta: nuevoPrecio.toFixed(0) }));
+      const nuevoMargen = nuevoPrecio > 0 ? ((nuevoPrecio - costo) / nuevoPrecio) * 100 : 0;
+      setForm((prev) => ({ ...prev, markup: e.target.value, precio_venta: nuevoPrecio.toFixed(0), margen: nuevoMargen.toFixed(2) }));
     } else {
       setForm((prev) => ({ ...prev, markup: e.target.value }));
+    }
+  }
+
+  /**
+   * Margen deseado SOBRE LA VENTA -> precio. No es lo mismo recargar 50% sobre
+   * el costo que ganar 50% sobre la venta: precio = costo / (1 - margen/100).
+   */
+  function handleMargenChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setErrorDuplicado(null);
+    setErrorGeneral(null);
+    const margen = parseFloat(e.target.value);
+    const costo = parseFloat(form.costo_promedio);
+    if (!isNaN(margen) && margen < 100 && !isNaN(costo) && costo > 1) {
+      const nuevoPrecio = costo / (1 - margen / 100);
+      const nuevoMarkup = ((nuevoPrecio - costo) / costo) * 100;
+      setForm((prev) => ({ ...prev, margen: e.target.value, precio_venta: nuevoPrecio.toFixed(0), markup: nuevoMarkup.toFixed(2) }));
+    } else {
+      setForm((prev) => ({ ...prev, margen: e.target.value }));
     }
   }
 
@@ -323,7 +345,8 @@ export default function EditarProductoPage() {
     const costo = parseFloat(form.costo_promedio);
     if (!isNaN(precio) && !isNaN(costo) && costo > 0) {
       const nuevoMarkup = ((precio - costo) / costo) * 100;
-      setForm((prev) => ({ ...prev, precio_venta: String(precio), markup: nuevoMarkup.toFixed(2) }));
+      const nuevoMargen = ((precio - costo) / precio) * 100;
+      setForm((prev) => ({ ...prev, precio_venta: String(precio), markup: nuevoMarkup.toFixed(2), margen: nuevoMargen.toFixed(2) }));
     } else {
       setForm((prev) => ({ ...prev, precio_venta: String(precio) }));
     }
@@ -986,7 +1009,30 @@ export default function EditarProductoPage() {
               </div>
               {showPrecioVenta && (
               <div>
-                <label className={labelClass}>Markup s/costo (%)</label>
+                <label className={labelClass}>Margen s/venta (%)</label>
+                <input
+                  type="number"
+                  name="margen"
+                  value={form.margen}
+                  onChange={handleMargenChange}
+                  className={inputClass}
+                  step="0.01"
+                  max="99.99"
+                  placeholder={(() => {
+                    const c = parseFloat(form.costo_promedio);
+                    return !isNaN(c) && c > 0 && c <= 1 ? "Sin costo real" : "Ej: 30.00";
+                  })()}
+                  disabled={(() => {
+                    const c = parseFloat(form.costo_promedio);
+                    return !isNaN(c) && c > 0 && c <= 1;
+                  })()}
+                />
+                <p className="mt-1.5 text-xs text-gray-400">Lo que te queda sobre el precio de venta.</p>
+              </div>
+              )}
+              {showPrecioVenta && (
+              <div>
+                <label className={labelClass}>Recarga s/costo (%)</label>
                 <input
                   type="number"
                   name="markup"
