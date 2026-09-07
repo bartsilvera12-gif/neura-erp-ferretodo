@@ -98,15 +98,20 @@ ON CONFLICT (empresa_id) DO UPDATE
   SET schema_datos = EXCLUDED.schema_datos, nombre = EXCLUDED.nombre, activo = true;
 
 -- ---------------------------------------------------------------------------
--- movimientos_inventario.origen tiene un CHECK que solo admite
--- compra|venta|ajuste_manual|inventario_inicial. Hay que sumar 'transferencia'
--- en AMBOS schemas, si no la entrada/salida de una transferencia es rechazada.
--- El nombre del constraint puede variar, asi que se busca por introspeccion.
+-- movimientos_inventario.origen tiene un CHECK con una lista cerrada de valores.
+-- Hay que sumar 'transferencia' en AMBOS schemas, si no la entrada/salida de una
+-- transferencia es rechazada.
+--
+-- La lista NO se escribe a mano: se arma con los valores que ya existen en cada
+-- schema mas 'transferencia'. Escribirla a mano fallo una vez porque habia
+-- movimientos con origen 'devolucion_venta' que no estaban en la lista, y un
+-- CHECK que no cubre las filas existentes no se puede crear.
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
   v_schema text;
   v_con    text;
+  v_vals   text;
 BEGIN
   FOREACH v_schema IN ARRAY ARRAY['ferrecolor','ferretodo'] LOOP
     IF NOT EXISTS (SELECT 1 FROM information_schema.tables
@@ -130,11 +135,18 @@ BEGIN
       RAISE NOTICE 'Schema %: constraint % eliminado.', v_schema, v_con;
     END IF;
 
+    -- Valores presentes hoy + los canonicos + transferencia.
     EXECUTE format(
-      'ALTER TABLE %I.movimientos_inventario ADD CONSTRAINT chk_mov_origen
-         CHECK (origen IN (''compra'',''venta'',''ajuste_manual'',''inventario_inicial'',''transferencia''))',
+      $q$SELECT string_agg(DISTINCT quote_literal(v), ',')
+           FROM (SELECT origen AS v FROM %I.movimientos_inventario WHERE origen IS NOT NULL
+                 UNION SELECT unnest(ARRAY['compra','venta','ajuste_manual','inventario_inicial','transferencia'])) s$q$,
       v_schema
+    ) INTO v_vals;
+
+    EXECUTE format(
+      'ALTER TABLE %I.movimientos_inventario ADD CONSTRAINT chk_mov_origen CHECK (origen IN (%s))',
+      v_schema, v_vals
     );
-    RAISE NOTICE 'Schema %: origen ahora admite transferencia.', v_schema;
+    RAISE NOTICE 'Schema %: origen ahora admite %', v_schema, v_vals;
   END LOOP;
 END $$;
