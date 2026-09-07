@@ -137,6 +137,8 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/notas-credito")) return "notas_credito";
   if (p.startsWith("/ventas")) return "ventas";
   if (p.startsWith("/inventario")) return "inventario";
+  // Transferencias internas: se gobierna con el permiso de inventario.
+  if (p.startsWith("/transferencias")) return "inventario";
   if (p.startsWith("/clientes")) return "clientes";
   if (p.startsWith("/proveedores")) return "compras";
   if (p.startsWith("/compras")) return "compras";
