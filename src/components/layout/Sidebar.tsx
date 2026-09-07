@@ -131,6 +131,7 @@ const MENU_STRUCTURE: MenuItem[] = [
     // Transferencias entre empresas del grupo: cuelga de Inventario porque es
     // una operacion de stock, y asi no hace falta habilitar un modulo nuevo.
     { label: "Transferencias", href: "/transferencias" },
+    { label: "Cuenta entre empresas", href: "/transferencias/cuenta" },
     // Depósitos / Ubicaciones oculto para Ferretodo (no aplica).
     // { label: "Depósitos / Ubicaciones", href: "/inventario/ubicaciones" },
   ]},
