@@ -59,6 +59,24 @@ export type MovimientoCuenta = {
   estado: string;
 };
 
+/** Una nota entre sucursales: la transferencia recibida, con su saldo. */
+export type NotaInterna = {
+  id: string;
+  numero: string;
+  fecha: string;
+  tipo_pago: "contado" | "credito";
+  vence_at: string | null;
+  vencida: boolean;
+  nombre_origen: string;
+  nombre_destino: string;
+  /** true si la deuda es de ESTA empresa. */
+  debo: boolean;
+  total: number;
+  pagado: number;
+  saldo: number;
+  estado: "pendiente" | "parcial" | "pagada";
+};
+
 export type CuentaCorriente = {
   empresa: Vinculada;
   contraparte: Vinculada;
@@ -69,6 +87,8 @@ export type CuentaCorriente = {
   pagado: number;
   cobrado: number;
   pagos_pendientes_confirmar: number;
+  /** Notas que ESTA empresa debe, de la mas vieja a la mas nueva. */
+  notas_a_pagar: NotaInterna[];
   movimientos: MovimientoCuenta[];
 };
 
@@ -86,13 +106,20 @@ export async function getCuentaCorriente(empresaId: string): Promise<CuentaCorri
     const otra = todas.find((v) => v.empresa_id !== empresaId);
     if (!otra) throw new TransferenciaError("No hay otra empresa vinculada.", 404);
 
+    // El saldo de cada nota se DERIVA: costo total menos lo aplicado por pagos
+    // confirmados o en camino. Guardarlo como contador podria desincronizarse.
     const trfQ = await c.query(
-      `SELECT id::text, numero, recibida_at, total_costo::float8 AS monto,
-              empresa_destino_id::text AS destino, nombre_origen, nombre_destino
-         FROM ${TRF}.transferencias
-        WHERE estado = 'recibido'
-          AND ((empresa_origen_id = $1::uuid AND empresa_destino_id = $2::uuid)
-            OR (empresa_origen_id = $2::uuid AND empresa_destino_id = $1::uuid))`,
+      `SELECT t.id::text, t.numero, t.recibida_at, t.total_costo::float8 AS monto,
+              t.empresa_destino_id::text AS destino, t.nombre_origen, t.nombre_destino,
+              t.tipo_pago, t.vence_at,
+              COALESCE((SELECT SUM(a.monto) FROM ${TRF}.pago_aplicaciones a
+                          JOIN ${TRF}.pagos_internos p ON p.id = a.pago_id
+                         WHERE a.transferencia_id = t.id AND p.estado <> 'cancelado'), 0)::float8 AS aplicado
+         FROM ${TRF}.transferencias t
+        WHERE t.estado = 'recibido'
+          AND ((t.empresa_origen_id = $1::uuid AND t.empresa_destino_id = $2::uuid)
+            OR (t.empresa_origen_id = $2::uuid AND t.empresa_destino_id = $1::uuid))
+        ORDER BY t.recibida_at`,
       [empresaId, otra.empresa_id]
     );
 
@@ -109,14 +136,38 @@ export async function getCuentaCorriente(empresaId: string): Promise<CuentaCorri
 
     let recibido = 0, entregado = 0, pagado = 0, cobrado = 0, pendientes = 0;
     const movimientos: MovimientoCuenta[] = [];
+    const notasAPagar: NotaInterna[] = [];
+    const hoy = new Date().toISOString().slice(0, 10);
 
     for (const r of trfQ.rows as unknown as Array<{
       id: string; numero: string; recibida_at: string; monto: number;
       destino: string; nombre_origen: string; nombre_destino: string;
+      tipo_pago: "contado" | "credito"; vence_at: string | null; aplicado: number;
     }>) {
       const meLlego = r.destino === empresaId;
       const m = Number(r.monto) || 0;
       if (meLlego) recibido += m; else entregado += m;
+
+      const aplicado = Math.round(Number(r.aplicado) || 0);
+      const saldo = Math.max(0, Math.round(m) - aplicado);
+      if (meLlego && saldo > 0) {
+        const venc = r.vence_at ? String(r.vence_at).slice(0, 10) : null;
+        notasAPagar.push({
+          id: r.id,
+          numero: r.numero,
+          fecha: r.recibida_at,
+          tipo_pago: r.tipo_pago === "contado" ? "contado" : "credito",
+          vence_at: venc,
+          vencida: venc != null && venc < hoy,
+          nombre_origen: r.nombre_origen,
+          nombre_destino: r.nombre_destino,
+          debo: true,
+          total: Math.round(m),
+          pagado: aplicado,
+          saldo,
+          estado: aplicado > 0 ? "parcial" : "pendiente",
+        });
+      }
       movimientos.push({
         tipo: "transferencia",
         id: r.id,
@@ -162,6 +213,7 @@ export async function getCuentaCorriente(empresaId: string): Promise<CuentaCorri
       pagado: Math.round(pagado),
       cobrado: Math.round(cobrado),
       pagos_pendientes_confirmar: pendientes,
+      notas_a_pagar: notasAPagar,
       movimientos,
     };
   } finally {
@@ -184,7 +236,7 @@ export interface RegistrarPagoInput {
  */
 export async function registrarPagoInterno(
   input: RegistrarPagoInput
-): Promise<{ id: string; numero: string; monto: number }> {
+): Promise<{ id: string; numero: string; monto: number; notas_canceladas: string[] }> {
   const monto = Math.round(Number(input.monto) || 0);
   if (!(monto > 0)) throw new TransferenciaError("El monto tiene que ser mayor a cero.");
 
@@ -217,6 +269,36 @@ export async function registrarPagoInterno(
       );
     }
 
+    // Notas pendientes de esta empresa con la otra, de la mas vieja a la mas
+    // nueva. FOR UPDATE para que dos pagos simultaneos no apliquen sobre el
+    // mismo saldo y terminen cancelando de mas.
+    const notasQ = await client.query(
+      `SELECT t.id::text, t.numero, t.total_costo::float8 AS total,
+              COALESCE((SELECT SUM(a.monto) FROM ${TRF}.pago_aplicaciones a
+                          JOIN ${TRF}.pagos_internos p ON p.id = a.pago_id
+                         WHERE a.transferencia_id = t.id AND p.estado <> 'cancelado'), 0)::float8 AS aplicado
+         FROM ${TRF}.transferencias t
+        WHERE t.estado = 'recibido'
+          AND t.empresa_destino_id = $1::uuid
+          AND t.empresa_origen_id = $2::uuid
+        ORDER BY t.recibida_at
+        FOR UPDATE OF t`,
+      [paga.empresa_id, cobra.empresa_id]
+    );
+    const notas = (notasQ.rows as unknown as Array<{ id: string; numero: string; total: number; aplicado: number }>)
+      .map((n) => ({ id: n.id, numero: n.numero, saldo: Math.max(0, Math.round(Number(n.total) || 0) - Math.round(Number(n.aplicado) || 0)) }))
+      .filter((n) => n.saldo > 0);
+
+    const deuda = notas.reduce((s, n) => s + n.saldo, 0);
+    if (deuda <= 0) {
+      throw new TransferenciaError(`No hay deuda pendiente con ${cobra.nombre}.`, 409);
+    }
+    if (monto > deuda) {
+      throw new TransferenciaError(
+        `El monto supera la deuda pendiente con ${cobra.nombre}, que es de ${deuda.toLocaleString("es-PY")}.`
+      );
+    }
+
     const numQ = await client.query(`SELECT ${TRF}.siguiente_numero_pago() AS numero`);
     const numero = String(numQ.rows[0].numero);
 
@@ -237,6 +319,22 @@ export async function registrarPagoInterno(
     );
     const pagoId = String(insQ.rows[0].id);
 
+    // Se cancela primero lo mas viejo. Una nota queda saldada cuando su saldo
+    // llega a cero; si el pago no alcanza, queda parcial.
+    let resto = monto;
+    const canceladas: string[] = [];
+    for (const n of notas) {
+      if (resto <= 0) break;
+      const aplica = Math.min(resto, n.saldo);
+      await client.query(
+        `INSERT INTO ${TRF}.pago_aplicaciones (pago_id, transferencia_id, monto)
+         VALUES ($1::uuid,$2::uuid,$3::numeric)`,
+        [pagoId, n.id, aplica]
+      );
+      resto -= aplica;
+      if (aplica >= n.saldo) canceladas.push(n.numero);
+    }
+
     if (cajaId) {
       await client.query(
         `INSERT INTO ${sPaga}."caja_movimientos"
@@ -252,7 +350,7 @@ export async function registrarPagoInterno(
     }
 
     await client.query("COMMIT");
-    return { id: pagoId, numero, monto };
+    return { id: pagoId, numero, monto, notas_canceladas: canceladas };
   } catch (e) {
     try { await client.query("ROLLBACK"); } catch { /* conexion ya rota */ }
     throw e;

@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
         const o = r as Record<string, unknown>;
         return { producto_id: String(o.producto_id ?? ""), cantidad: Number(o.cantidad) || 0 };
       }),
+      tipoPago: body.tipo_pago === "contado" ? "contado" : "credito",
+      plazoDias: body.plazo_dias != null ? Number(body.plazo_dias) : null,
       observacion: body.observacion ? String(body.observacion) : null,
       usuarioId: ctx.usuarioId,
       usuarioNombre: ctx.usuarioNombre,

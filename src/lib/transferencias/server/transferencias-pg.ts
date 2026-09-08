@@ -86,6 +86,10 @@ export interface CrearTransferenciaInput {
   empresaOrigenId: string;
   empresaDestinoId: string;
   items: Array<{ producto_id: string; cantidad: number }>;
+  /** La transferencia es tambien la nota entre sucursales. */
+  tipoPago?: "contado" | "credito";
+  /** Solo en credito: dias desde la recepcion hasta el vencimiento. */
+  plazoDias?: number | null;
   observacion?: string | null;
   usuarioId?: string | null;
   usuarioNombre?: string | null;
@@ -124,17 +128,24 @@ export async function crearTransferencia(
     const numQ = await client.query(`SELECT ${TRF}.siguiente_numero() AS numero`);
     const numero = String(numQ.rows[0].numero);
 
+    const tipoPago = input.tipoPago === "contado" ? "contado" : "credito";
+    // El plazo solo tiene sentido en credito; en contado la nota vence al recibir.
+    const plazoDias = tipoPago === "credito" && Number(input.plazoDias) > 0
+      ? Math.round(Number(input.plazoDias))
+      : null;
+
     const trfQ = await client.query(
       `INSERT INTO ${TRF}.transferencias
          (numero, empresa_origen_id, schema_origen, nombre_origen,
           empresa_destino_id, schema_destino, nombre_destino,
-          observacion, creada_por_id, creada_por_nombre)
-       VALUES ($1,$2::uuid,$3,$4,$5::uuid,$6,$7,$8,$9::uuid,$10)
+          tipo_pago, plazo_dias, observacion, creada_por_id, creada_por_nombre)
+       VALUES ($1,$2::uuid,$3,$4,$5::uuid,$6,$7,$8,$9::int,$10,$11::uuid,$12)
        RETURNING id::text`,
       [
         numero,
         origen.empresa_id, origen.schema_datos, origen.nombre,
         destino.empresa_id, destino.schema_datos, destino.nombre,
+        tipoPago, plazoDias,
         input.observacion?.trim() || null,
         input.usuarioId || null,
         input.usuarioNombre?.trim() || null,
@@ -231,6 +242,10 @@ export type Transferencia = {
   empresa_destino_id: string;
   nombre_destino: string;
   estado: "pendiente" | "recibido" | "cancelado";
+  /** La transferencia es tambien la nota: contado o credito. */
+  tipo_pago: "contado" | "credito";
+  plazo_dias: number | null;
+  vence_at: string | null;
   observacion: string | null;
   total_costo: number;
   creada_at: string;
@@ -246,7 +261,7 @@ export type Transferencia = {
 };
 
 const COLS_TRF = `id::text, numero, empresa_origen_id::text, nombre_origen,
-  empresa_destino_id::text, nombre_destino, estado, observacion,
+  empresa_destino_id::text, nombre_destino, estado, tipo_pago, plazo_dias, vence_at, observacion,
   total_costo::float8 AS total_costo, creada_at, creada_por_nombre,
   recibida_at, recibida_por_nombre, cancelada_at, cancelada_por_nombre, cancelada_motivo`;
 
@@ -491,9 +506,13 @@ export async function recibirTransferencia(
       );
     }
 
+    // La deuda nace al recibir, no al despachar: hasta que no la aceptan, la
+    // mercaderia esta en transito y nadie debe nada. El vencimiento se calcula
+    // aca por lo mismo.
     await client.query(
       `UPDATE ${TRF}.transferencias
-          SET estado = 'recibido', recibida_at = now(), recibida_por_id = $1::uuid, recibida_por_nombre = $2
+          SET estado = 'recibido', recibida_at = now(), recibida_por_id = $1::uuid, recibida_por_nombre = $2,
+              vence_at = (now() + (COALESCE(plazo_dias, 0) || ' days')::interval)::date
         WHERE id = $3::uuid`,
       [input.usuarioId || null, input.usuarioNombre?.trim() || null, input.transferenciaId]
     );

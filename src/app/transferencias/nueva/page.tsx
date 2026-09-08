@@ -24,6 +24,8 @@ export default function NuevaTransferenciaPage() {
   const [destinos, setDestinos] = useState<Destino[]>([]);
   const [destinoId, setDestinoId] = useState("");
   const [observacion, setObservacion] = useState("");
+  const [tipoPago, setTipoPago] = useState<"contado" | "credito">("credito");
+  const [plazoDias, setPlazoDias] = useState(30);
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Prod[]>([]);
@@ -94,6 +96,8 @@ export default function NuevaTransferenciaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           empresa_destino_id: destinoId,
+          tipo_pago: tipoPago,
+          plazo_dias: tipoPago === "credito" ? plazoDias : null,
           observacion: observacion.trim() || null,
           items: lineas.map((l) => ({ producto_id: l.producto.id, cantidad: l.cantidad })),
         }),
@@ -127,6 +131,29 @@ export default function NuevaTransferenciaPage() {
           </select>
         </div>
         <div>
+          <label className="mb-1 block text-[11px] font-semibold text-slate-500">Nota</label>
+          <div className="flex items-center gap-2">
+            <select value={tipoPago} onChange={(e) => setTipoPago(e.target.value as "contado" | "credito")} className={inputC}>
+              <option value="credito">Crédito</option>
+              <option value="contado">Contado</option>
+            </select>
+            {tipoPago === "credito" && (
+              <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                a
+                <input type="number" min={0} value={plazoDias}
+                  onChange={(e) => setPlazoDias(Math.max(0, Number(e.target.value) || 0))}
+                  className={`${inputC} w-20 tabular-nums`} />
+                días
+              </label>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {tipoPago === "contado"
+              ? "Vence al recibirse: se paga en el momento."
+              : "El plazo se cuenta desde que la otra empresa confirma la recepción."}
+          </p>
+        </div>
+        <div className="sm:col-span-2">
           <label className="mb-1 block text-[11px] font-semibold text-slate-500">Observación (opcional)</label>
           <input value={observacion} onChange={(e) => setObservacion(e.target.value)} className={`${inputC} w-full`} placeholder="Ej: pedido urgente de obra" />
         </div>

@@ -21,6 +21,14 @@ type Mov = {
   importe: number;
   estado: string;
 };
+type Nota = {
+  id: string; numero: string; fecha: string;
+  tipo_pago: "contado" | "credito";
+  vence_at: string | null; vencida: boolean;
+  nombre_origen: string;
+  total: number; pagado: number; saldo: number;
+  estado: "pendiente" | "parcial" | "pagada";
+};
 type Cuenta = {
   empresa: { nombre: string };
   contraparte: { nombre: string };
@@ -30,6 +38,7 @@ type Cuenta = {
   pagado: number;
   cobrado: number;
   pagos_pendientes_confirmar: number;
+  notas_a_pagar: Nota[];
   movimientos: Mov[];
 };
 
@@ -75,7 +84,11 @@ export default function CuentaCorrientePage() {
       });
       const j = await r.json();
       if (!r.ok || j?.success === false) throw new Error(j?.error ?? `Error ${r.status}`);
-      setOk(`Pago ${j.data.numero} registrado. Sale de tu caja y queda pendiente de que ${c?.contraparte.nombre} lo confirme.`);
+      const canc = (j.data.notas_canceladas ?? []) as string[];
+      setOk(
+        `Pago ${j.data.numero} registrado. Sale de tu caja y queda pendiente de que ${c?.contraparte.nombre} lo confirme.` +
+        (canc.length ? ` Canceló ${canc.length === 1 ? "la nota" : "las notas"} ${canc.join(", ")}.` : "")
+      );
       setMonto(0); setObs("");
       await cargar();
     } catch (e) {
@@ -185,7 +198,47 @@ export default function CuentaCorrientePage() {
         </div>
       )}
 
+      {c.notas_a_pagar.length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+            <h2 className="text-sm font-bold text-slate-900">Notas pendientes de pago</h2>
+            <p className="text-xs text-slate-500">Se cancelan de la más vieja a la más nueva a medida que pagás.</p>
+          </div>
+          <table className="w-full min-w-[680px] text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50/60">
+              <tr>
+                {["Nota", "Recibida", "Tipo", "Vence", "Total", "Pagado", "Saldo"].map((h, i) => (
+                  <th key={i} className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 ${i >= 4 ? "text-right" : "text-left"}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {c.notas_a_pagar.map((n) => (
+                <tr key={n.id} className={n.vencida ? "bg-red-50/40" : ""}>
+                  <td className="px-4 py-2.5 font-mono text-xs font-semibold text-slate-700">{n.numero}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{String(n.fecha).slice(0, 10)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${n.tipo_pago === "contado" ? "bg-slate-100 text-slate-600" : "bg-sky-100 text-sky-700"}`}>
+                      {n.tipo_pago === "contado" ? "Contado" : "Crédito"}
+                    </span>
+                  </td>
+                  <td className={`px-4 py-2.5 ${n.vencida ? "font-semibold text-red-700" : "text-slate-500"}`}>
+                    {n.vence_at ?? "—"}{n.vencida ? " · vencida" : ""}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">{fmtGs(n.total)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{n.pagado > 0 ? fmtGs(n.pagado) : "—"}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-slate-900">{fmtGs(n.saldo)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+          <h2 className="text-sm font-bold text-slate-900">Movimientos</h2>
+        </div>
         <table className="w-full min-w-[680px] text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
