@@ -174,6 +174,7 @@ export default function TransferenciaDetallePage() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[820px] text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
@@ -238,6 +239,7 @@ export default function TransferenciaDetallePage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {err && <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</p>}

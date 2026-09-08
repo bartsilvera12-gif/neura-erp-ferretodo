@@ -204,6 +204,7 @@ export default function CuentaCorrientePage() {
             <h2 className="text-sm font-bold text-slate-900">Notas pendientes de pago</h2>
             <p className="text-xs text-slate-500">Se cancelan de la más vieja a la más nueva a medida que pagás.</p>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full min-w-[680px] text-sm">
             <thead className="border-b border-slate-200 bg-slate-50/60">
               <tr>
@@ -232,6 +233,7 @@ export default function CuentaCorrientePage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -239,6 +241,7 @@ export default function CuentaCorrientePage() {
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
           <h2 className="text-sm font-bold text-slate-900">Movimientos</h2>
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
@@ -274,6 +277,7 @@ export default function CuentaCorrientePage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <p className="text-xs text-slate-500">
