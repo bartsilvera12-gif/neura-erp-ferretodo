@@ -13,11 +13,14 @@
 -- `empresa_id` en la app (service role) + RLS. `producto_id` referencia
 -- `ferretodo.productos` con ON DELETE CASCADE para limpieza automatica.
 --
--- RLS: se habilita SOLO si existe el helper compartido
--- public.puede_acceder_empresa(uuid) (el mismo que usan las policies de
--- ferretodo.productos). Si no existe, se omite RLS y el aislamiento queda por
--- app + empresa_id (identico a devoluciones_venta), sin inventar un sistema
--- de seguridad paralelo.
+-- SEGURIDAD: esta galeria se opera EXCLUSIVAMENTE desde APIs server-side que
+-- usan service_role (el unico rol con rolbypassrls). Por lo tanto:
+--   - RLS se habilita SIEMPRE (sin policies => deny-by-default para cualquier
+--     rol que NO bypassee RLS, es decir anon y authenticated).
+--   - Solo service_role recibe CRUD; a anon/authenticated se les revoca todo.
+--   - NO se depende de public.puede_acceder_empresa() ni se crean policies para
+--     anon/authenticated: el aislamiento por empresa lo hace la app (filtro
+--     empresa_id en cada endpoint) sobre el acceso de service_role.
 -- ============================================================================
 
 -- ── 1) Tabla ────────────────────────────────────────────────────────────────
@@ -48,38 +51,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_producto_imagenes_principal_unica
   ON ferretodo.producto_imagenes (empresa_id, producto_id)
   WHERE es_principal = true;
 
--- ── 3) Grants (PostgREST usa service_role; anon/authenticated quedan gateados por RLS si aplica) ──
-GRANT SELECT, INSERT, UPDATE, DELETE ON ferretodo.producto_imagenes TO anon, authenticated, service_role;
+-- ── 3) Seguridad: RLS SIEMPRE + acceso EXCLUSIVO de service_role ────────────
+-- Sin policies: con RLS habilitada, todo rol que no bypassee RLS (anon,
+-- authenticated) queda DENEGADO por defecto. service_role bypassea RLS y es el
+-- unico que usan los endpoints server-side de esta feature.
+ALTER TABLE ferretodo.producto_imagenes ENABLE ROW LEVEL SECURITY;
 
--- ── 4) RLS: mismo patron que ferretodo.productos, solo si existe el helper ──────
-DO $$
-BEGIN
-  IF to_regprocedure('public.puede_acceder_empresa(uuid)') IS NOT NULL THEN
-    ALTER TABLE ferretodo.producto_imagenes ENABLE ROW LEVEL SECURITY;
+-- Revocar cualquier privilegio directo de anon/authenticated (incluye los que
+-- otorgan las ALTER DEFAULT PRIVILEGES de Supabase sobre tablas nuevas).
+REVOKE ALL PRIVILEGES ON TABLE ferretodo.producto_imagenes FROM anon, authenticated;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='ferretodo' AND tablename='producto_imagenes' AND policyname='producto_imagenes_select') THEN
-      CREATE POLICY "producto_imagenes_select" ON ferretodo.producto_imagenes
-        FOR SELECT USING (public.puede_acceder_empresa(empresa_id));
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='ferretodo' AND tablename='producto_imagenes' AND policyname='producto_imagenes_insert') THEN
-      CREATE POLICY "producto_imagenes_insert" ON ferretodo.producto_imagenes
-        FOR INSERT WITH CHECK (public.puede_acceder_empresa(empresa_id));
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='ferretodo' AND tablename='producto_imagenes' AND policyname='producto_imagenes_update') THEN
-      CREATE POLICY "producto_imagenes_update" ON ferretodo.producto_imagenes
-        FOR UPDATE USING (public.puede_acceder_empresa(empresa_id))
-        WITH CHECK (public.puede_acceder_empresa(empresa_id));
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='ferretodo' AND tablename='producto_imagenes' AND policyname='producto_imagenes_delete') THEN
-      CREATE POLICY "producto_imagenes_delete" ON ferretodo.producto_imagenes
-        FOR DELETE USING (public.puede_acceder_empresa(empresa_id));
-    END IF;
-
-    RAISE NOTICE '[producto_imagenes] RLS habilitada con public.puede_acceder_empresa.';
-  ELSE
-    RAISE NOTICE '[producto_imagenes] Helper public.puede_acceder_empresa no existe: se omite RLS (aislamiento por app + empresa_id, igual que devoluciones_venta).';
-  END IF;
-END $$;
+-- Solo service_role opera la tabla (via APIs server-side autenticadas).
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ferretodo.producto_imagenes TO service_role;
 
 -- ── 5) Backfill: la imagen legacy de cada producto pasa a ser su principal ──────
 -- Migra productos.imagen_path (+ imagen_url si existia) como fila principal,
