@@ -8,8 +8,7 @@ import PresentacionesEditor from "@/components/inventario/PresentacionesEditor";
 import { getProducto, productoExiste, updateProducto } from "@/lib/inventario/storage";
 import ProyeccionProductoCard from "@/components/inventario/ProyeccionProductoCard";
 import type { MetodoValuacion } from "@/lib/inventario/types";
-import ProductGalleryUploader from "@/components/inventario/ProductGalleryUploader";
-import RichTextEditor from "@/components/inventario/RichTextEditor";
+import ProductImageUploader from "@/components/inventario/ProductImageUploader";
 import SelectFromList from "@/components/inventario/SelectFromList";
 import ProveedoresCostos from "@/components/inventario/ProveedoresCostos";
 import { ShoppingBag, Boxes, ClipboardList, type LucideIcon } from "lucide-react";
@@ -57,6 +56,8 @@ export default function EditarProductoPage() {
     unidad_medida: "",
     metodo_valuacion: "CPP" as MetodoValuacion,
   });
+  const [imagenPath, setImagenPath] = useState<string | null>(null);
+  const [imagenUrl, setImagenUrl] = useState<string | null>(null);
   const [codigoOriginal, setCodigoOriginal] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [generandoCodigo, setGenerandoCodigo] = useState(false);
@@ -218,6 +219,8 @@ export default function EditarProductoPage() {
         metodo_valuacion: p.metodo_valuacion,
       });
       setCodigoOriginal(p.codigo_barras ?? null);
+      setImagenPath(p.imagen_path ?? null);
+      setImagenUrl(p.imagen_url ?? null);
       setCategoriaId(p.categoria_principal_id ?? null);
       setUbicacionId(p.ubicacion_principal_id ?? null);
       setProveedorId(p.proveedor_principal_id ?? null);
@@ -541,13 +544,19 @@ export default function EditarProductoPage() {
 
           <div>
             <label className={labelClass}>
-              Descripción / especificaciones
-              <span className="text-xs font-normal text-slate-400 ml-2">(visible en la web)</span>
+              Descripción
+              {tipoGastro === "menu" && <span className="text-xs font-normal text-amber-700 ml-2">(visible al cliente)</span>}
             </label>
-            <RichTextEditor
-              initialHtml={descripcion}
-              onChange={setDescripcion}
-              placeholder="Especificaciones técnicas, características, uso… Usá negrita, títulos y listas para ordenar la información."
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder={
+                tipoGastro === "menu"
+                  ? "Ej: Pan, carne, huevo, doble queso, lechuga, tomate, mayonesa."
+                  : "Descripción opcional del producto"
+              }
+              rows={tipoGastro === "menu" ? 3 : 2}
+              className={inputClass}
             />
           </div>
 
@@ -645,10 +654,18 @@ export default function EditarProductoPage() {
             </p>
           </div>
 
-          {/* Imágenes del producto (galería) */}
+          {/* Imagen del producto */}
           <div>
-            <label className={labelClass}>Imágenes del producto</label>
-            <ProductGalleryUploader productoId={id} />
+            <label className={labelClass}>Imagen del producto</label>
+            <ProductImageUploader
+              productoId={id}
+              initialUrl={imagenUrl}
+              initialPath={imagenPath}
+              onChange={(info) => {
+                setImagenPath(info.imagen_path);
+                setImagenUrl(info.imagen_url);
+              }}
+            />
           </div>
 
           {/* Clasificación, Proveedor, Ubicación */}

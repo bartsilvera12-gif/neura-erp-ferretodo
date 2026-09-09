@@ -3,7 +3,6 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
-import { normalizeDescripcionParaGuardar } from "@/lib/text/rich-text";
 import { applyTokenSearch } from "@/lib/productos/token-search";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
@@ -266,9 +265,7 @@ export async function POST(request: NextRequest) {
     if (unidadReceta !== undefined) insertPayload.unidad_receta = unidadReceta;
     if (factorCompraReceta !== undefined) insertPayload.factor_compra_receta = factorCompraReceta;
     if (tiempoPrepMinutos !== undefined) insertPayload.tiempo_prep_minutos = tiempoPrepMinutos;
-    // Descripcion / especificaciones: HTML enriquecido saneado en servidor
-    // (allowlist estricta, sin atributos) antes de persistir. Vacio -> null.
-    const descripcion = body.descripcion === undefined ? undefined : normalizeDescripcionParaGuardar(body.descripcion);
+    const descripcion = typeof body.descripcion === "string" ? body.descripcion.trim() || null : (body.descripcion === null ? null : undefined);
     if (descripcion !== undefined) insertPayload.descripcion = descripcion;
     insertPayload.precio_mayorista = toNumberOrNull(body.precio_mayorista);
     insertPayload.cantidad_minima_mayorista = toNumberOrNull(body.cantidad_minima_mayorista);

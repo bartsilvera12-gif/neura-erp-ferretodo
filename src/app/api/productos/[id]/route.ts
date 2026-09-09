@@ -3,7 +3,6 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
-import { normalizeDescripcionParaGuardar } from "@/lib/text/rich-text";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 const PRODUCTO_COLS =
@@ -177,10 +176,8 @@ export async function PATCH(
       patch.factor_compra_receta = body.factor_compra_receta;
     if (typeof body.tiempo_prep_minutos === "number" && body.tiempo_prep_minutos >= 0)
       patch.tiempo_prep_minutos = Math.floor(body.tiempo_prep_minutos);
-    // Descripcion / especificaciones: HTML enriquecido saneado en servidor
-    // (allowlist estricta, sin atributos) antes de persistir. Vacio -> null.
     if (body.descripcion !== undefined)
-      patch.descripcion = normalizeDescripcionParaGuardar(body.descripcion);
+      patch.descripcion = body.descripcion == null ? null : String(body.descripcion).trim() || null;
     if (body.precio_mayorista !== undefined) patch.precio_mayorista = toNumberOrNull(body.precio_mayorista);
     if (body.cantidad_minima_mayorista !== undefined) patch.cantidad_minima_mayorista = toNumberOrNull(body.cantidad_minima_mayorista);
     if (body.precio_distribuidor !== undefined) patch.precio_distribuidor = toNumberOrNull(body.precio_distribuidor);
