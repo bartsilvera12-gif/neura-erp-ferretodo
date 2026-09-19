@@ -143,9 +143,13 @@ export function pathRequiresModuleSlug(pathname: string): string | null {
   if (p.startsWith("/proveedores")) return "compras";
   if (p.startsWith("/compras")) return "compras";
   if (p.startsWith("/gastos")) return "gastos";
+  // Otros ingresos: módulo/permiso propio. Antes no tenía gate por ruta.
+  if (p.startsWith("/otros-ingresos")) return "otros_ingresos";
   if (p.startsWith("/reportes")) return "reportes";
   if (p.startsWith("/pagos")) return "pagos";
   if (p.startsWith("/comisiones")) return "comisiones";
+  // Entidades bancarias vive bajo /configuracion pero tiene su propio permiso.
+  if (p.startsWith("/configuracion/entidades-bancarias")) return "entidades_bancarias";
   if (p.startsWith("/configuracion")) return "configuracion";
   if (p.startsWith("/planes")) return "planes";
   if (p.startsWith("/gestion-clientes")) return "gestion-clientes";

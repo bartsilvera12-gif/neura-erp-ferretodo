@@ -25,12 +25,13 @@ export async function GET(request: Request) {
     }
 
     /**
-     * En instancia dedicada monocliente (`NEURA_INSTANCE_MODE=single_client`), `empresa_modulos`
-     * es la única fuente de verdad: los aliases legacy (omnicanal → finalizadas/historial/monitoreo,
-     * clientes → gestion-clientes, ventas → notas_credito) quedan inhabilitados.
+     * Instancia dedicada monocliente (Ferretodo): `empresa_modulos` / `usuario_modulos`
+     * es la ÚNICA fuente de verdad. Se fuerza el modo estricto por código (sin depender
+     * de `NEURA_INSTANCE_MODE`): los aliases legacy (omnicanal → finalizadas/historial/
+     * monitoreo, clientes → gestion-clientes, ventas → notas_credito) NO otorgan acceso.
+     * Un módulo que no esté habilitado no se ve en el menú ni se puede abrir por URL.
      */
-    const strictAllowlist =
-      (process.env.NEURA_INSTANCE_MODE ?? "").trim().toLowerCase() === "single_client";
+    const strictAllowlist = true;
 
     const supabase = createServiceRoleClient();
 
