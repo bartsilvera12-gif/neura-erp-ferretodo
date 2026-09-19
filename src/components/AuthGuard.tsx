@@ -134,6 +134,24 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
       !access.superAdmin &&
       !isModuleSlugGranted(slug, access.slugs, access.inactiveSlugs, { strict: access.strict })
     ) {
+      // Landing en la raíz `/` (módulo `dashboard`) sin ese módulo: en vez de
+      // mostrar el cartel "Módulo no habilitado", redirigir a la primera ruta
+      // accesible del usuario (su home real), igual que hace el botón "Volver
+      // al inicio". Evita el cartel intermedio tras el login para usuarios con
+      // acceso acotado (sin dashboard). Solo aplica a la raíz: navegar
+      // explícitamente a un módulo sin permiso sigue mostrando el aviso.
+      if (pathname === "/" && slug === "dashboard") {
+        const home = firstAccessibleHref(access.slugs, {
+          superAdmin: false,
+          inactiveSlugs: access.inactiveSlugs,
+          strict: access.strict,
+        });
+        if (home && home !== "/" && home !== "/login") {
+          router.replace(home);
+          setBlockedSlug(null);
+          return;
+        }
+      }
       setBlockedSlug(slug);
       return;
     }
