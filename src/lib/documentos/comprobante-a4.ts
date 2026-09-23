@@ -5,6 +5,7 @@
  * impresion de VARIAS de un mismo cliente, sin duplicar la plantilla.
  */
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
+import { EMPRESA_DOC } from "@/lib/documentos/membrete";
 
 export function escapeHtml(s: string): string {
   return String(s ?? "")
@@ -105,7 +106,8 @@ export const COMPROBANTE_A4_CSS = `  * { box-sizing: border-box; }
     margin-bottom: 10px;
   }
   .header-top .brand { display: flex; align-items: center; gap: 12px; }
-  .header-top .logo { max-height: 60px; width: auto; }
+  /* Mismas proporciones que el membrete del Presupuesto (logo lockup horizontal). */
+  .header-top .logo { max-width: 250px; max-height: 56px; width: auto; height: auto; object-fit: contain; display: block; }
   .header-top .empresa-datos { font-size: 11.5px; line-height: 1.4; }
   .header-top .empresa-datos .razon { font-weight: 700; letter-spacing: 0.5px; }
   .fecha-top { font-size: 12px; font-weight: 700; text-align: right; }
@@ -328,9 +330,9 @@ export async function hojaComprobanteA4(
   return { hoja: `  <div class="hoja">
     <div class="header-top">
       <div class="brand">
-        <img src="/brand/ferretodo-logo.png" alt="Ferretodo" class="logo" />
+        <img src="${escapeHtml(EMPRESA_DOC.logoUrl)}" alt="${escapeHtml(EMPRESA_DOC.nombre)}" class="logo" />
         <div class="empresa-datos">
-          <div class="razon">FERRETODO</div>
+          <div class="razon">${escapeHtml(EMPRESA_DOC.nombre.toUpperCase())}</div>
           <div>R.U.C.: —</div>
         </div>
       </div>
