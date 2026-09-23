@@ -681,6 +681,7 @@ export default function NuevoProductoPage() {
             </div>
             <p className="mt-1.5 text-xs text-gray-400">
               Código escaneable para lector o etiqueta (EAN-13). Debe ser único. <span className="italic">(opcional)</span>
+              {" "}Si lo dejás vacío, se asigna un <strong>código interno automático</strong>.
             </p>
           </div>
 

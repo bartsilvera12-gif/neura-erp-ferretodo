@@ -3,6 +3,7 @@ import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
+import { generarCodigoInternoProducto } from "@/lib/inventario/codigo-interno-server";
 import { applyTokenSearch } from "@/lib/productos/token-search";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
@@ -159,8 +160,20 @@ export async function POST(request: NextRequest) {
     if (!nombre) return NextResponse.json(errorResponse("El nombre es obligatorio."), { status: 400 });
     if (!sku) return NextResponse.json(errorResponse("El SKU es obligatorio."), { status: 400 });
 
-    const codigoBarras = normalizeUpperCodigoBarras(body.codigo_barras);
-    const codigoBarrasInterno = codigoBarras != null && body.codigo_barras_interno === true;
+    let codigoBarras = normalizeUpperCodigoBarras(body.codigo_barras);
+    let codigoBarrasInterno = codigoBarras != null && body.codigo_barras_interno === true;
+    // Código interno automático: si el producto NUEVO no trae código de barras, se le
+    // asigna uno propio (INT-...) único, correlativo y no reutilizable. El usuario no lo
+    // carga a mano. Si ya trae código de barras, se respeta sin cambios. Best-effort: si
+    // la generación falla, el producto se crea igual (sin código, como antes).
+    if (codigoBarras == null) {
+      try {
+        codigoBarras = await generarCodigoInternoProducto(empresaId);
+        codigoBarrasInterno = true;
+      } catch (e) {
+        console.error("[/api/productos POST] codigo interno auto", e instanceof Error ? e.message : e);
+      }
+    }
     const stockActual = Number(body.stock_actual ?? 0) || 0;
     const costoPromedio = Number(body.costo_promedio ?? 0) || 0;
     const stockMinimo = Number(body.stock_minimo ?? 0) || 0;
