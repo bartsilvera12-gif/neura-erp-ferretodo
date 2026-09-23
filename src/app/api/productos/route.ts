@@ -164,14 +164,21 @@ export async function POST(request: NextRequest) {
     let codigoBarrasInterno = codigoBarras != null && body.codigo_barras_interno === true;
     // Código interno automático: si el producto NUEVO no trae código de barras, se le
     // asigna uno propio (INT-...) único, correlativo y no reutilizable. El usuario no lo
-    // carga a mano. Si ya trae código de barras, se respeta sin cambios. Best-effort: si
-    // la generación falla, el producto se crea igual (sin código, como antes).
+    // carga a mano. Si ya trae código de barras, se respeta sin cambios.
+    // OBLIGATORIO: todo producto sin código de barras DEBE quedar con su código interno.
+    // Si la generación falla, se aborta la creación (no se crea un producto sin código).
     if (codigoBarras == null) {
       try {
         codigoBarras = await generarCodigoInternoProducto(empresaId);
         codigoBarrasInterno = true;
       } catch (e) {
         console.error("[/api/productos POST] codigo interno auto", e instanceof Error ? e.message : e);
+        return NextResponse.json(
+          errorResponse(
+            "No se pudo generar el código interno automático. El producto no fue creado. Reintentá en unos segundos; si el problema persiste, avisá al administrador."
+          ),
+          { status: 503 }
+        );
       }
     }
     const stockActual = Number(body.stock_actual ?? 0) || 0;
