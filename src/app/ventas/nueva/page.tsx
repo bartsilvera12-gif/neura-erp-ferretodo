@@ -605,23 +605,7 @@ export default function NuevaVentaPage() {
           { cache: "no-store" }
         );
         const j = await res.json();
-        const items = ((j?.data?.items ?? []) as Record<string, unknown>[]).map((p): Producto => ({
-          id: String(p.id),
-          nombre: String(p.nombre ?? ""),
-          sku: String(p.sku ?? ""),
-          costo_promedio: Number(p.costo_promedio) || 0,
-          precio_venta: Number(p.precio_venta) || 0,
-          precio_mayorista: p.precio_mayorista != null ? Number(p.precio_mayorista) : null,
-          precio_distribuidor: p.precio_distribuidor != null ? Number(p.precio_distribuidor) : null,
-          stock_actual: Number(p.stock_actual) || 0,
-          stock_minimo: Number(p.stock_minimo) || 0,
-          unidad_medida: String(p.unidad_medida ?? "UNIDAD"),
-          metodo_valuacion: (typeof p.metodo_valuacion === "string" ? p.metodo_valuacion : "CPP") as MetodoValuacion,
-          es_vendible: p.es_vendible !== false,
-          controla_stock: p.controla_stock !== false,
-          imagen_url: (p.imagen_url as string | null) ?? null,
-          imagen_path: (p.imagen_path as string | null) ?? null,
-        }));
+        const items = ((j?.data?.items ?? []) as Record<string, unknown>[]).map(mapSearchItemToProducto);
         setComboHits(items);
         // Merge a `productos` para que los lookups (tipo de precio, stock) resuelvan.
         if (items.length > 0) {
@@ -757,6 +741,72 @@ export default function NuevaVentaPage() {
     return { ...l, total_linea, monto_iva, subtotal: total_linea - monto_iva };
   }
 
+  /** Mapea un item del buscador (/api/productos/search) al tipo Producto local.
+   *  Incluye `codigo_barras` para poder hacer match EXACTO al escanear. */
+  function mapSearchItemToProducto(p: Record<string, unknown>): Producto {
+    return {
+      id: String(p.id),
+      nombre: String(p.nombre ?? ""),
+      sku: String(p.sku ?? ""),
+      codigo_barras: (p.codigo_barras as string | null) ?? null,
+      codigo_barras_interno: p.codigo_barras_interno === true,
+      costo_promedio: Number(p.costo_promedio) || 0,
+      precio_venta: Number(p.precio_venta) || 0,
+      precio_mayorista: p.precio_mayorista != null ? Number(p.precio_mayorista) : null,
+      precio_distribuidor: p.precio_distribuidor != null ? Number(p.precio_distribuidor) : null,
+      stock_actual: Number(p.stock_actual) || 0,
+      stock_minimo: Number(p.stock_minimo) || 0,
+      unidad_medida: String(p.unidad_medida ?? "UNIDAD"),
+      metodo_valuacion: (typeof p.metodo_valuacion === "string" ? p.metodo_valuacion : "CPP") as MetodoValuacion,
+      es_vendible: p.es_vendible !== false,
+      controla_stock: p.controla_stock !== false,
+      imagen_url: (p.imagen_url as string | null) ?? null,
+      imagen_path: (p.imagen_path as string | null) ?? null,
+    };
+  }
+
+  /**
+   * Escanear código de barras: cuando el Enter de la pistola llega ANTES de que
+   * termine el debounce del buscador, hacemos un lookup directo por el código y
+   * agregamos el producto automáticamente si hay match exacto (código o SKU).
+   * Si no hay match exacto, mostramos la lista para elegir manualmente.
+   */
+  async function escanearYAgregar(code: string) {
+    try {
+      const res = await fetchWithSupabaseSession(
+        `/api/productos/search?q=${encodeURIComponent(code)}&limit=10`,
+        { cache: "no-store" }
+      );
+      const j = await res.json();
+      const items = ((j?.data?.items ?? []) as Record<string, unknown>[]).map(mapSearchItemToProducto);
+      if (items.length > 0) {
+        setProductos((prev) => {
+          const byId = new Map(prev.map((x) => [x.id, x]));
+          for (const it of items) byId.set(it.id, { ...byId.get(it.id), ...it });
+          return [...byId.values()];
+        });
+      }
+      const exacto =
+        items.find((p) => (p.codigo_barras ?? "").trim() === code) ??
+        items.find((p) => (p.sku ?? "").trim().toUpperCase() === code.toUpperCase());
+      if (exacto) {
+        agregarProductoRapido(exacto);
+        return;
+      }
+      if (items.length === 1) {
+        agregarProductoRapido(items[0]);
+        return;
+      }
+      // Múltiples o ninguno: mostrar la lista (o el estado "sin resultados").
+      setComboHits(items);
+      setComboOpen(true);
+      setComboHighlight(items.length > 0 ? 0 : -1);
+    } catch {
+      setComboHits([]);
+      setComboOpen(true);
+    }
+  }
+
   /** Agrega un producto directo desde el autocomplete: si ya está (sin presentación)
    *  suma +1; si no, crea la línea. Luego limpia el input y devuelve el foco. */
   function agregarProductoRapido(p: Producto) {
@@ -826,8 +876,17 @@ export default function NuevaVentaPage() {
       setComboHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const sel = comboResultados[comboHighlight] ?? comboResultados[0];
-      if (sel) agregarProductoRapido(sel);
+      const code = comboQuery.trim();
+      if (comboResultados.length > 0) {
+        // Con resultados: priorizar match EXACTO por código de barras (pistola cuyo
+        // debounce alcanzó a correr); sino el resaltado o el primero (búsqueda manual).
+        const exacto = comboResultados.find((p) => (p.codigo_barras ?? "").trim() === code);
+        const elegido = exacto ?? comboResultados[comboHighlight] ?? comboResultados[0];
+        if (elegido) agregarProductoRapido(elegido);
+      } else if (code.length >= 3) {
+        // Sin resultados todavía: la pistola mandó Enter antes del debounce → lookup directo.
+        void escanearYAgregar(code);
+      }
     } else if (e.key === "Escape") {
       setComboOpen(false);
       setComboHighlight(-1);
