@@ -799,6 +799,11 @@ export default function NuevaVentaPage() {
   function changeCantidadItem(idx: number, delta: number) {
     setItems((prev) => prev.map((it, i) => (i === idx ? recomputeLinea({ ...it, cantidad: Math.max(1, it.cantidad + delta) }) : it)));
   }
+  /** ¿El producto se vende por peso? (unidad KG → precio por kilo, cantidad en kg con decimales). */
+  function esProductoPeso(productoId: string): boolean {
+    const p = productos.find((x) => x.id === productoId);
+    return (p?.unidad_medida || "").trim().toUpperCase() === "KG";
+  }
   function changeTipoPrecioItem(idx: number, tipo: TipoPrecioVenta) {
     setItems((prev) =>
       prev.map((it, i) => {
@@ -1373,15 +1378,27 @@ export default function NuevaVentaPage() {
                           </td>
                           {/* Cantidad */}
                           <td className="px-3 py-2.5">
-                            <div className="mx-auto flex w-fit items-center rounded-md border border-slate-200 bg-white">
-                              <button type="button" onClick={() => changeCantidadItem(idx, -1)} className="h-8 w-8 rounded-l-md text-slate-500 hover:bg-slate-100"><Minus className="mx-auto h-3.5 w-3.5" /></button>
-                              <input
-                                type="number" min={1} value={item.cantidad}
-                                onChange={(e) => updateItemCampo(idx, { cantidad: Math.max(1, parseInt(e.target.value) || 1) })}
-                                className="h-8 w-12 text-center text-sm tabular-nums outline-none"
-                              />
-                              <button type="button" onClick={() => changeCantidadItem(idx, 1)} className="h-8 w-8 rounded-r-md text-slate-500 hover:bg-slate-100"><Plus className="mx-auto h-3.5 w-3.5" /></button>
-                            </div>
+                            {esProductoPeso(item.producto_id) ? (
+                              // Producto por peso: cantidad en kg con decimales (ej. 0,250).
+                              <div className="mx-auto flex w-fit items-center gap-1">
+                                <input
+                                  type="number" min={0} step="0.001" value={item.cantidad}
+                                  onChange={(e) => updateItemCampo(idx, { cantidad: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                  className="h-8 w-20 rounded-md border border-slate-200 text-center text-sm tabular-nums outline-none"
+                                />
+                                <span className="text-[11px] text-slate-400">kg</span>
+                              </div>
+                            ) : (
+                              <div className="mx-auto flex w-fit items-center rounded-md border border-slate-200 bg-white">
+                                <button type="button" onClick={() => changeCantidadItem(idx, -1)} className="h-8 w-8 rounded-l-md text-slate-500 hover:bg-slate-100"><Minus className="mx-auto h-3.5 w-3.5" /></button>
+                                <input
+                                  type="number" min={1} value={item.cantidad}
+                                  onChange={(e) => updateItemCampo(idx, { cantidad: Math.max(1, parseInt(e.target.value) || 1) })}
+                                  className="h-8 w-12 text-center text-sm tabular-nums outline-none"
+                                />
+                                <button type="button" onClick={() => changeCantidadItem(idx, 1)} className="h-8 w-8 rounded-r-md text-slate-500 hover:bg-slate-100"><Plus className="mx-auto h-3.5 w-3.5" /></button>
+                              </div>
+                            )}
                           </td>
                           {/* Precio unitario: editable libremente; el piso es el costo de compra. */}
                           <td className="px-3 py-2.5 text-right">

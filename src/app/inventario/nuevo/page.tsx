@@ -642,6 +642,17 @@ export default function NuevoProductoPage() {
                   <option key={u} value={u}>{u}</option>
                 ))}
               </select>
+              {/* Venta por peso: marca el producto como vendido por kilo (unidad KG).
+                  El precio de venta pasa a interpretarse por kilo y en Caja se ingresa el peso. */}
+              <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.unidad_medida.trim().toUpperCase() === "KG"}
+                  onChange={(e) => setForm((prev) => ({ ...prev, unidad_medida: e.target.checked ? "KG" : "UNIDAD" }))}
+                  className="h-4 w-4 rounded border-gray-300 text-[#0EA5E9] focus:ring-[#0EA5E9]"
+                />
+                Se vende por peso <span className="text-slate-400">(precio por kilo)</span>
+              </label>
             </div>
           </div>
 

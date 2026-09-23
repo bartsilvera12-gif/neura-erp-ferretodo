@@ -115,6 +115,8 @@ export default function ProductPickerModal({
   const [iva, setIva] = useState<"EXENTA" | "5%" | "10%">(ivaDefault);
   const [tipoPrecio, setTipoPrecio] = useState<"minorista" | "mayorista" | "distribuidor">("minorista");
   const [feedback, setFeedback] = useState<string | null>(null);
+  // Venta por peso: unidad del input (kg o g) cuando el producto se vende por kilo.
+  const [pesoUnidad, setPesoUnidad] = useState<"kg" | "g">("kg");
 
   // Presentaciones del producto seleccionado (Unidad, Caja, Paquete...).
   // Se cargan al seleccionar el producto en el panel de detalle.
@@ -185,7 +187,9 @@ export default function ProductPickerModal({
 
   function selectProducto(p: ProductoPickerItem) {
     setSel(p);
-    setCantidad("1");
+    const esPesoProd = (p.unidad_medida || "").trim().toUpperCase() === "KG";
+    setPesoUnidad("kg");
+    setCantidad(esPesoProd ? "" : "1");
     // Precio inicial: minorista (precio_venta) en la moneda de la venta.
     setTipoPrecio("minorista");
     setPrecio(precioEnMonedaStr(precioPorTipoPicker(p, "minorista")));
@@ -236,9 +240,13 @@ export default function ProductPickerModal({
 
   function handleAgregar() {
     if (!sel) return;
-    const cantNum = parseInt(cantidad, 10) || 0;
+    const esPesoLocal = (sel.unidad_medida || "").trim().toUpperCase() === "KG";
+    // Producto por peso: la cantidad se interpreta en kg (convirtiendo desde g si aplica).
+    const cantNum = esPesoLocal
+      ? (pesoUnidad === "g" ? (parseFloat(cantidad) || 0) / 1000 : (parseFloat(cantidad) || 0))
+      : (parseInt(cantidad, 10) || 0);
     const precioNum = parseFloat(precio) || 0;
-    if (cantNum <= 0) { setFeedback("Cantidad debe ser > 0"); return; }
+    if (cantNum <= 0) { setFeedback(esPesoLocal ? "Ingresá un peso mayor a 0" : "Cantidad debe ser > 0"); return; }
     if (precioNum <= 0) { setFeedback("Precio debe ser > 0"); return; }
     if (moneda === "USD" && tipoCambio <= 0) { setFeedback("Falta tipo de cambio en la venta"); return; }
     // Venta sin stock (Fase 5): NO se bloquea por falta de stock; se permite agregar
@@ -255,7 +263,7 @@ export default function ProductPickerModal({
     });
     if (ok !== false) {
       setFeedback("Producto agregado ✓");
-      setCantidad("1");
+      setCantidad(esPesoLocal ? "" : "1");
       // foco al buscador para seguir cargando
       setTimeout(() => inputRef.current?.focus(), 0);
       setTimeout(() => setFeedback(null), 1500);
@@ -270,7 +278,13 @@ export default function ProductPickerModal({
   const enCarritoSel = sel ? excludeIds.filter((id) => id === sel.id).length : 0;
   const dispBase = sel ? sel.stock_actual - enCarritoSel : 0;
   const cantBase = presSel ? presSel.cantidad_base : 1;
-  const dispSel = cantBase > 0 ? Math.floor(dispBase / cantBase) : dispBase;
+  // ¿Producto vendido por peso? (unidad KG → precio por kilo, cantidad en kg con decimales).
+  const esPeso = (sel?.unidad_medida || "").trim().toUpperCase() === "KG";
+  // Cantidad efectiva en unidad base: peso en kg (convertido desde g si aplica) o cantidad entera.
+  const cantEfectiva = esPeso
+    ? (pesoUnidad === "g" ? (parseFloat(cantidad) || 0) / 1000 : (parseFloat(cantidad) || 0))
+    : (parseInt(cantidad, 10) || 0);
+  const dispSel = esPeso ? dispBase : (cantBase > 0 ? Math.floor(dispBase / cantBase) : dispBase);
   const precioGsEquiv = moneda === "USD" ? (parseFloat(precio) || 0) * (tipoCambio || 0) : (parseFloat(precio) || 0);
   // IVA INCLUIDO (semantica del sistema, coherente con calcIva en /ventas/nueva):
   // el precio que tipea el cajero YA incluye IVA. El monto IVA se EXTRAE del
@@ -278,7 +292,7 @@ export default function ProductPickerModal({
   //   totalLinea = cantidad * precio   (IVA dentro)
   //   ivaMonto   = totalLinea - totalLinea / 1.10   (la parte que es IVA)
   //   subtotal   = totalLinea - ivaMonto             (base imponible)
-  const totalLinea = (parseInt(cantidad, 10) || 0) * precioGsEquiv;
+  const totalLinea = cantEfectiva * precioGsEquiv;
   const ivaMonto =
     iva === "10%" ? totalLinea - totalLinea / 1.10
     : iva === "5%" ? totalLinea - totalLinea / 1.05
@@ -537,27 +551,56 @@ export default function ProductPickerModal({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] uppercase text-slate-400 mb-1">
-                        Cantidad{presSel && presSel.nombre !== sel.unidad_medida ? ` (${presSel.nombre})` : ""}
+                        {esPeso ? "Peso" : `Cantidad${presSel && presSel.nombre !== sel.unidad_medida ? ` (${presSel.nombre})` : ""}`}
                       </label>
-                      <input
-                        type="number" min={1}
-                        value={cantidad}
-                        onChange={(e) => setCantidad(e.target.value)}
-                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
-                      />
-                      {presSel && presSel.cantidad_base !== 1 && (parseInt(cantidad, 10) || 0) > 0 && (
-                        <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
-                          ={" "}
-                          <span className="font-semibold">
-                            {(parseInt(cantidad, 10) || 0) * presSel.cantidad_base}
-                          </span>{" "}
-                          {sel.unidad_medida}
-                        </p>
+                      {esPeso ? (
+                        <>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number" min={0} step={pesoUnidad === "g" ? "1" : "0.001"}
+                              value={cantidad}
+                              onChange={(e) => setCantidad(e.target.value)}
+                              placeholder={pesoUnidad === "g" ? "Ej: 250" : "Ej: 0.250"}
+                              className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+                            />
+                            <select
+                              value={pesoUnidad}
+                              onChange={(e) => setPesoUnidad(e.target.value as "kg" | "g")}
+                              className="border border-slate-200 rounded-lg px-1.5 py-1.5 text-sm bg-white"
+                            >
+                              <option value="kg">kg</option>
+                              <option value="g">g</option>
+                            </select>
+                          </div>
+                          {cantEfectiva > 0 && (
+                            <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
+                              = <span className="font-semibold">{cantEfectiva}</span> kg
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="number" min={1}
+                            value={cantidad}
+                            onChange={(e) => setCantidad(e.target.value)}
+                            className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+                          />
+                          {presSel && presSel.cantidad_base !== 1 && (parseInt(cantidad, 10) || 0) > 0 && (
+                            <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
+                              ={" "}
+                              <span className="font-semibold">
+                                {(parseInt(cantidad, 10) || 0) * presSel.cantidad_base}
+                              </span>{" "}
+                              {sel.unidad_medida}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                     <div>
                       <label className="block text-[11px] uppercase text-slate-400 mb-1">
-                        Precio ({moneda === "USD" ? "USD" : "Gs."})
+                        Precio {esPeso ? "por kg " : ""}({moneda === "USD" ? "USD" : "Gs."})
                       </label>
                       <input
                         type="number" min={0}
