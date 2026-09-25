@@ -518,7 +518,19 @@ export default function EditarProductoPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow p-6">
-        <form className="space-y-6" onSubmit={handleSubmit} noValidate>
+        <form
+          className="space-y-6"
+          onSubmit={handleSubmit}
+          noValidate
+          onKeyDown={(e) => {
+            // El producto solo debe guardarse al hacer click en "Guardar".
+            // Evita que Enter en un campo de texto — en particular el Enter del lector de
+            // código de barras al escanear en "Código de barras" — dispare el submit.
+            if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+              e.preventDefault();
+            }
+          }}
+        >
           {errorGeneral && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
               <p className="text-sm text-red-700">{errorGeneral}</p>

@@ -527,7 +527,21 @@ export default function NuevoProductoPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow p-6 max-w-5xl">
-        <form className="space-y-6" onSubmit={handleSubmit} noValidate>
+        <form
+          className="space-y-6"
+          onSubmit={handleSubmit}
+          noValidate
+          onKeyDown={(e) => {
+            // El producto solo debe guardarse al hacer click en "Guardar".
+            // Evita que Enter en un campo de texto — en particular el Enter que envía el
+            // lector de código de barras al terminar de escanear en "Código de barras" —
+            // dispare el submit del formulario. Se acepta el código y se sigue cargando.
+            // Los <textarea> mantienen los saltos de línea.
+            if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+              e.preventDefault();
+            }
+          }}
+        >
 
           {/* Error general (validacion de codigo, duplicado de codigo barras, etc.) */}
           {errorGeneral && (
