@@ -171,7 +171,17 @@ export default function NuevaOrdenCompraPage() {
         <p className="mt-1 text-sm text-slate-500">Productos y costos pactados con el proveedor. No pide factura ni impacta stock — eso se hace al recibir.</p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-6">
+      <form
+        onSubmit={onSubmit}
+        className="space-y-6"
+        onKeyDown={(e) => {
+          // Solo se guarda al hacer click en "Guardar": Enter en un campo de texto (o el
+          // Enter del lector de código de barras) no debe enviar el formulario.
+          if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+            e.preventDefault();
+          }
+        }}
+      >
         {/* Cabecera */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

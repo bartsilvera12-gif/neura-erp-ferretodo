@@ -397,7 +397,20 @@ export default function NuevaCompraPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 max-w-4xl">
-        <form className="space-y-8" onSubmit={handleSubmit}>
+        <form
+          className="space-y-8"
+          onSubmit={handleSubmit}
+          onKeyDown={(e) => {
+            // La compra es una factura: solo debe guardarse al hacer click en "Guardar".
+            // Evita que Enter en un campo de texto (o el Enter que envía el lector de
+            // código de barras al terminar de escanear) dispare el submit del formulario.
+            // Se permite Enter en <textarea> (saltos de línea); los buscadores manejan su
+            // propio Enter para elegir un resultado.
+            if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+              e.preventDefault();
+            }
+          }}
+        >
 
           {/* ── Cabecera ─────────────────────────────────────────────────────── */}
           <section className="space-y-4">
