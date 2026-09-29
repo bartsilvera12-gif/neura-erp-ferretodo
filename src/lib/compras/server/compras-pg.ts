@@ -55,6 +55,109 @@ async function upsertProveedorProducto(
   }
 }
 
+/**
+ * Aplica Costo Promedio Ponderado (CPP) al producto e impacta stock, dentro de
+ * la transacción en curso. Reemplaza el viejo "pisar con el último costo".
+ *
+ * - Lee y bloquea el producto (FOR UPDATE) para tomar stock y costo actuales.
+ * - Captura la "línea base" (stock + costo previos) la PRIMERA vez que el
+ *   producto entra a una compra (Opción A): punto de partida para reconstruir
+ *   el CPP al anular (Etapa 2). Idempotente (ON CONFLICT DO NOTHING).
+ * - Nuevo costo interno = (stock·costo + cantidad·costoCompra) / (stock+cantidad).
+ *   Si no hay stock/costo previo válido, toma el costo real de la factura.
+ * - Actualiza stock_actual + costo_promedio (+ precio_venta si viene > 0).
+ * - Registra una fila en producto_costo_historial (best-effort en SAVEPOINT).
+ *
+ * IMPORTANTE: NO toca la fila de compras (el importe real de la factura queda
+ * intacto). El promedio es solo costo interno del producto.
+ */
+async function aplicarCostoPromedioPonderado(
+  client: import("pg").PoolClient,
+  schema: string,
+  empresaId: string,
+  a: {
+    producto_id: string;
+    producto_nombre: string;
+    cantidad: number;
+    costo_unitario: number; // costo real de la compra en PYG
+    precio_venta: number;
+    numero_control: string | null;
+    proveedor_id: string | null;
+    proveedor_nombre: string | null;
+    created_by: string | null;
+    usuario_nombre: string | null;
+  }
+): Promise<void> {
+  const tP = quoteSchemaTable(schema, "productos");
+  const tCB = quoteSchemaTable(schema, "producto_costo_base");
+  const tCH = quoteSchemaTable(schema, "producto_costo_historial");
+
+  const { rows } = await client.query<{ stock: string; costo: string }>(
+    `SELECT stock_actual::numeric AS stock, costo_promedio::numeric AS costo
+       FROM ${tP} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+    [a.producto_id, empresaId]
+  );
+  const stockAnterior = Number(rows[0]?.stock ?? 0);
+  const costoAnterior = Number(rows[0]?.costo ?? 0);
+  const cantidad = Number(a.cantidad) || 0;
+  const costoCompra = Number(a.costo_unitario) || 0;
+
+  // Línea base (Opción A): snapshot ANTES de la primera compra registrada.
+  await client.query(
+    `INSERT INTO ${tCB} (empresa_id, producto_id, stock_base, costo_base, capturado_por)
+     VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::uuid)
+     ON CONFLICT (empresa_id, producto_id) DO NOTHING`,
+    [empresaId, a.producto_id, stockAnterior, costoAnterior, a.created_by]
+  );
+
+  // CPP móvil. Sin stock/costo previo válido → costo real de la factura.
+  const baseValida = stockAnterior > 0 && costoAnterior > 0 && stockAnterior + cantidad > 0;
+  const nuevoCosto = baseValida
+    ? Math.round(((stockAnterior * costoAnterior + cantidad * costoCompra) / (stockAnterior + cantidad)) * 100) / 100
+    : costoCompra;
+
+  await client.query(
+    `UPDATE ${tP}
+        SET stock_actual = stock_actual + $1::numeric,
+            costo_promedio = $2::numeric,
+            precio_venta = CASE WHEN $3::numeric > 0 THEN $3::numeric ELSE precio_venta END,
+            updated_at = now()
+      WHERE id = $4::uuid AND empresa_id = $5::uuid`,
+    [cantidad, nuevoCosto, a.precio_venta, a.producto_id, empresaId]
+  );
+
+  // Historial (best-effort: un fallo acá no debe abortar la compra).
+  try {
+    await client.query("SAVEPOINT sp_cph");
+    await client.query(
+      `INSERT INTO ${tCH} (
+         empresa_id, producto_id, producto_nombre, evento,
+         costo_anterior, cantidad_anterior, costo_compra, cantidad_ingresada,
+         costo_promedio_nuevo, numero_control, proveedor_id, proveedor_nombre,
+         created_by, usuario_nombre
+       ) VALUES (
+         $1::uuid, $2::uuid, $3, 'compra',
+         $4::numeric, $5::numeric, $6::numeric, $7::numeric,
+         $8::numeric, $9, $10::uuid, $11,
+         $12::uuid, $13
+       )`,
+      [
+        empresaId, a.producto_id, a.producto_nombre,
+        costoAnterior, stockAnterior, costoCompra, cantidad,
+        nuevoCosto, a.numero_control, a.proveedor_id, a.proveedor_nombre,
+        a.created_by, a.usuario_nombre,
+      ]
+    );
+    await client.query("RELEASE SAVEPOINT sp_cph");
+  } catch (e) {
+    await client.query("ROLLBACK TO SAVEPOINT sp_cph").catch(() => null);
+    console.error("[compras-pg] historial CPP fallo (best-effort)", {
+      schema, empresaId, producto: a.producto_id,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
 export interface CompraRow {
   id: string;
   empresa_id: string;
@@ -312,19 +415,21 @@ export async function insertComprasConImpactoTx(
       warnings.push(it.producto_nombre);
     }
 
-    // Actualizar producto: stock + costo_promedio siempre.
-    // precio_venta SOLO se actualiza si la compra trae un precio > 0 (productos
-    // vendibles). Para materia prima / insumos sin precio (0 o vacío) mantenemos
-    // el precio actual: nunca lo pisamos con 0 ni con un valor inventado.
-    await client.query(
-      `UPDATE ${tP}
-          SET stock_actual = stock_actual + $1::numeric,
-              costo_promedio = $2::numeric,
-              precio_venta = CASE WHEN $3::numeric > 0 THEN $3::numeric ELSE precio_venta END,
-              updated_at = now()
-        WHERE id = $4::uuid AND empresa_id = $5::uuid`,
-      [it.cantidad, it.costo_unitario, it.precio_venta, it.producto_id, empresaId]
-    );
+    // Actualizar producto: stock + costo promedio PONDERADO (CPP) + precio_venta.
+    // El costo interno se promedia (no se pisa con el último). El importe real de
+    // la factura queda intacto en la fila de compras.
+    await aplicarCostoPromedioPonderado(client, schema, empresaId, {
+      producto_id: it.producto_id,
+      producto_nombre: it.producto_nombre,
+      cantidad: it.cantidad,
+      costo_unitario: it.costo_unitario,
+      precio_venta: it.precio_venta,
+      numero_control: numero,
+      proveedor_id: header.proveedor_id ?? null,
+      proveedor_nombre: header.proveedor_nombre ?? null,
+      created_by: header.created_by ?? null,
+      usuario_nombre: header.usuario_nombre ?? null,
+    });
 
     // Mantener relación producto↔proveedor (costo_habitual). No pisa marca.
     await upsertProveedorProducto(
@@ -493,17 +598,21 @@ export async function insertCompraConImpacto(
         "La compra se guardó pero no se pudo registrar el movimiento de entrada en inventario.";
     }
 
-    // Actualizar producto: stock + costo_promedio siempre; precio_venta solo si > 0
-    // (no pisamos el precio de insumos / materia prima con 0).
-    await client.query(
-      `UPDATE ${tP}
-          SET stock_actual = stock_actual + $1::numeric,
-              costo_promedio = $2::numeric,
-              precio_venta = CASE WHEN $3::numeric > 0 THEN $3::numeric ELSE precio_venta END,
-              updated_at = now()
-        WHERE id = $4::uuid AND empresa_id = $5::uuid`,
-      [d.cantidad, d.costo_unitario, d.precio_venta, d.producto_id, empresaId]
-    );
+    // Actualizar producto: stock + costo promedio PONDERADO (CPP) + precio_venta.
+    // El costo interno se promedia (no se pisa con el último). El importe real de
+    // la factura queda intacto en la fila de compras.
+    await aplicarCostoPromedioPonderado(client, schema, empresaId, {
+      producto_id: d.producto_id,
+      producto_nombre: d.producto_nombre,
+      cantidad: d.cantidad,
+      costo_unitario: d.costo_unitario,
+      precio_venta: d.precio_venta,
+      numero_control: numero,
+      proveedor_id: d.proveedor_id ?? null,
+      proveedor_nombre: d.proveedor_nombre ?? null,
+      created_by: d.created_by ?? null,
+      usuario_nombre: d.usuario_nombre ?? null,
+    });
 
     // Mantener relación producto↔proveedor (costo_habitual). No pisa marca.
     await upsertProveedorProducto(
