@@ -158,6 +158,92 @@ async function aplicarCostoPromedioPonderado(
   }
 }
 
+/**
+ * Recalcula el Costo Promedio Ponderado (CPP) de un producto reconstruyéndolo
+ * desde la LÍNEA BASE (estado previo a su primera compra) y reproduciendo, en
+ * orden cronológico, todos sus movimientos válidos. Se usa al ANULAR una compra:
+ * el promedio no debe conservar el efecto de una compra posteriormente anulada.
+ *
+ * Reglas del replay:
+ * - Solo las COMPRAS no anuladas cambian el CPP (con su costo real). La compra
+ *   que se está anulando ya quedó con anulada_at → se excluye automáticamente.
+ * - Las ventas / ajustes / devoluciones / stock inicial cambian la cantidad
+ *   disponible (que pondera la siguiente compra) pero NO el costo unitario.
+ * - Se ignoran los contra-movimientos de anulación (referencia 'ANUL-%') y las
+ *   ENTRADAS de origen 'compra' del ledger (las compras vienen de la tabla
+ *   `compras`, para respetar anulada_at y el costo real).
+ * - Punto de partida: la línea base (Opción A). Si no hay línea base (compras
+ *   previas a esta feature), parte de stock 0 / costo 0 y reconstruye todo.
+ *
+ * Devuelve el nuevo costo interno (y el stock reconstruido, informativo).
+ */
+export async function recomputarCostoPromedioPonderado(
+  client: import("pg").PoolClient,
+  schema: string,
+  empresaId: string,
+  productoId: string
+): Promise<{ costo: number; stock: number }> {
+  const tCB = quoteSchemaTable(schema, "producto_costo_base");
+  const tC = quoteSchemaTable(schema, "compras");
+  const tM = quoteSchemaTable(schema, "movimientos_inventario");
+
+  const { rows: baseRows } = await client.query<{ stock: string; costo: string; capturado_at: string }>(
+    `SELECT stock_base::numeric AS stock, costo_base::numeric AS costo, capturado_at
+       FROM ${tCB} WHERE empresa_id = $1::uuid AND producto_id = $2::uuid`,
+    [empresaId, productoId]
+  );
+  const hasBase = baseRows.length > 0;
+  const stock0 = hasBase ? Number(baseRows[0].stock) : 0;
+  const costo0 = hasBase ? Number(baseRows[0].costo) : 0;
+  const t0 = hasBase ? baseRows[0].capturado_at : null;
+
+  const { rows: compras } = await client.query<{ qty: string; cost: string; fecha: string }>(
+    `SELECT cantidad::numeric AS qty, costo_unitario::numeric AS cost, fecha
+       FROM ${tC}
+      WHERE empresa_id = $1::uuid AND producto_id = $2::uuid AND anulada_at IS NULL
+      ORDER BY fecha ASC`,
+    [empresaId, productoId]
+  );
+
+  const { rows: movs } = await client.query<{ tipo: string; qty: string; fecha: string }>(
+    `SELECT tipo, cantidad::numeric AS qty, fecha
+       FROM ${tM}
+      WHERE empresa_id = $1::uuid AND producto_id = $2::uuid
+        AND origen <> 'compra'
+        AND (referencia IS NULL OR referencia NOT LIKE 'ANUL-%')
+        AND ($3::timestamptz IS NULL OR fecha > $3::timestamptz)
+      ORDER BY fecha ASC`,
+    [empresaId, productoId, t0]
+  );
+
+  type Ev = { t: number; kind: "compra" | "mov"; qty: number; cost: number; delta: number };
+  const events: Ev[] = [];
+  for (const c of compras) {
+    events.push({ t: new Date(c.fecha).getTime(), kind: "compra", qty: Number(c.qty), cost: Number(c.cost), delta: 0 });
+  }
+  for (const m of movs) {
+    const q = Number(m.qty);
+    const delta = String(m.tipo).toUpperCase() === "ENTRADA" ? q : -q;
+    events.push({ t: new Date(m.fecha).getTime(), kind: "mov", qty: q, cost: 0, delta });
+  }
+  events.sort((a, b) => a.t - b.t);
+
+  let stock = stock0;
+  let costo = costo0;
+  for (const e of events) {
+    if (e.kind === "compra") {
+      const baseValida = stock > 0 && costo > 0 && stock + e.qty > 0;
+      costo = baseValida
+        ? Math.round(((stock * costo + e.qty * e.cost) / (stock + e.qty)) * 100) / 100
+        : e.cost;
+      stock += e.qty;
+    } else {
+      stock += e.delta;
+    }
+  }
+  return { costo, stock };
+}
+
 export interface CompraRow {
   id: string;
   empresa_id: string;

@@ -5,6 +5,7 @@ import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { recomputarCostoPromedioPonderado } from "@/lib/compras/server/compras-pg";
 
 function pool() {
   const p = getChatPostgresPool();
@@ -45,6 +46,7 @@ export async function POST(
     const tC = quoteSchemaTable(schema, "compras");
     const tP = quoteSchemaTable(schema, "productos");
     const tM = quoteSchemaTable(schema, "movimientos_inventario");
+    const tCH = quoteSchemaTable(schema, "producto_costo_historial");
 
     const client = await pool().connect();
     try {
@@ -74,9 +76,12 @@ export async function POST(
       }
 
       let unidadesDevueltas = 0;
+      // Productos afectados (producto_id -> nombre) para recalcular su CPP al final.
+      const productosTocados = new Map<string, string>();
       for (const c of compras) {
         const cantidad = Number(c.cantidad);
         if (!Number.isFinite(cantidad) || cantidad <= 0) continue;
+        productosTocados.set(c.producto_id, c.producto_nombre);
 
         await client.query(
           `UPDATE ${tP}
@@ -135,6 +140,54 @@ export async function POST(
         );
 
         unidadesDevueltas += cantidad;
+      }
+
+      // Recalcular el Costo Promedio Ponderado (CPP) de cada producto afectado.
+      // La(s) compra(s) recién anulada(s) ya tienen anulada_at, así que el replay
+      // las excluye. El importe de la factura NO se toca; solo el costo interno.
+      for (const [productoId, productoNombre] of productosTocados) {
+        try {
+          await client.query("SAVEPOINT sp_cpp_recalc");
+          const { rows: pr } = await client.query<{ stock: string; costo: string }>(
+            `SELECT stock_actual::numeric AS stock, costo_promedio::numeric AS costo
+               FROM ${tP} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+            [productoId, empresaId]
+          );
+          const stockAntes = Number(pr[0]?.stock ?? 0);
+          const costoAntes = Number(pr[0]?.costo ?? 0);
+
+          const { costo: nuevoCosto } = await recomputarCostoPromedioPonderado(
+            client, schema, empresaId, productoId
+          );
+
+          await client.query(
+            `UPDATE ${tP} SET costo_promedio = $1::numeric, updated_at = now()
+              WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+            [nuevoCosto, productoId, empresaId]
+          );
+
+          await client.query(
+            `INSERT INTO ${tCH} (
+               empresa_id, producto_id, producto_nombre, evento,
+               costo_anterior, cantidad_anterior, costo_compra, cantidad_ingresada,
+               costo_promedio_nuevo, numero_control, proveedor_id, proveedor_nombre,
+               created_by, usuario_nombre
+             ) VALUES (
+               $1::uuid, $2::uuid, $3, 'recalculo_anulacion',
+               $4::numeric, $5::numeric, 0, 0,
+               $6::numeric, $7, NULL, NULL,
+               $8::uuid, NULL
+             )`,
+            [empresaId, productoId, productoNombre, costoAntes, stockAntes, nuevoCosto, `ANUL-${numeroControl}`, usuarioId]
+          );
+          await client.query("RELEASE SAVEPOINT sp_cpp_recalc");
+        } catch (e) {
+          await client.query("ROLLBACK TO SAVEPOINT sp_cpp_recalc").catch(() => null);
+          console.error("[compras/anular] recálculo CPP fallo (best-effort)", {
+            empresaId, producto: productoId, numeroControl,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
 
       await client.query("COMMIT");
