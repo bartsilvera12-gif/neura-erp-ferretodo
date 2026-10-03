@@ -328,8 +328,18 @@ export async function getReporteCajas(
     if (m.venta_id && ventasDevueltas.has(m.venta_id)) continue;
     const a = accById.get(m.caja_id);
     if (!a) continue;
-    if ((m.medio_pago ?? "efectivo") !== "efectivo") continue;
+    const medio = m.medio_pago ?? "efectivo";
     const monto = num(m.monto);
+    if (medio !== "efectivo") {
+      // Ingresos por transferencia/tarjeta (p.ej. cobro de crédito u otros
+      // ingresos) suman al total del medio correspondiente. NO afectan el
+      // efectivo esperado (arqueo), que es solo la caja física.
+      if (m.tipo === "ingreso") {
+        if (medio === "transferencia") a.total_transferencia += monto;
+        else if (medio === "tarjeta") a.total_tarjeta += monto;
+      }
+      continue;
+    }
     if (m.tipo === "ingreso") a.ingresos_efectivo += monto;
     else if (m.tipo === "egreso") a.egresos_efectivo += monto;
     else if (m.tipo === "retiro") a.retiros_efectivo += monto;
@@ -528,8 +538,17 @@ export async function getDetalleCaja(
     retirosEf = 0,
     ajustesEf = 0;
   for (const m of movs) {
-    if ((m.medio_pago ?? "efectivo") !== "efectivo") continue;
+    const medio = m.medio_pago ?? "efectivo";
     const monto = num(m.monto);
+    if (medio !== "efectivo") {
+      // Ingresos por transferencia/tarjeta (cobro de crédito, otros ingresos)
+      // suman al total del medio. No afectan el efectivo esperado (arqueo).
+      if (m.tipo === "ingreso") {
+        if (medio === "transferencia") totalTransferencia += monto;
+        else if (medio === "tarjeta") totalTarjeta += monto;
+      }
+      continue;
+    }
     if (m.tipo === "ingreso") ingresosEf += monto;
     else if (m.tipo === "egreso") egresosEf += monto;
     else if (m.tipo === "retiro") retirosEf += monto;

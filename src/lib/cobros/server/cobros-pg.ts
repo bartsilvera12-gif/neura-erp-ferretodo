@@ -1,4 +1,5 @@
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
+import { getCajaAbierta, registrarMovimiento } from "@/lib/caja/server";
 
 export type MetodoPagoCobro = "efectivo" | "transferencia" | "tarjeta" | "otro";
 
@@ -114,6 +115,32 @@ export async function registrarCobro(
       await sb.from("cobros_clientes").delete().eq("id", cobroId).eq("empresa_id", empresaId);
     } catch {}
     throw new CobroError(upd.error.message, 500);
+  }
+
+  // 3) Impacto en CAJA. El cobro de un crédito es plata que entra: debe sumar
+  // a la caja según el medio de pago. Si hay una caja abierta, se registra como
+  // INGRESO (efectivo suma al efectivo; transferencia/tarjeta a su total).
+  // Best-effort: si no hay caja abierta o falla, el cobro queda igual registrado.
+  try {
+    const caja = await getCajaAbierta(sb, empresaId);
+    if (caja) {
+      await registrarMovimiento(sb, {
+        empresaId,
+        cajaId: caja.id,
+        tipo: "ingreso",
+        concepto: "Cobro de crédito",
+        monto,
+        medioPago: metodoValido(input.metodo_pago),
+        observacion: input.referencia?.trim() || null,
+        usuarioId: input.usuario_id || null,
+        usuarioEmail: input.usuario_nombre?.trim() || null,
+      });
+    }
+  } catch (e) {
+    console.error(
+      "[cobros] no se pudo registrar el ingreso en caja (best-effort):",
+      e instanceof Error ? e.message : e
+    );
   }
 
   return { cobro_id: cobroId, saldo_nuevo: saldoNuevo < 0 ? 0 : saldoNuevo, estado: estadoNuevo };
