@@ -428,6 +428,15 @@ export default function VentasPage() {
                           >
                             Imprimir
                           </a>
+                          <a
+                            href={`/api/ventas/${v.id}/factura-preimpresa`}
+                            target="_blank"
+                            rel="noopener"
+                            className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+                            title="Imprimir sobre la hoja preimpresa (3 copias). Permite calibrar la posición de los datos."
+                          >
+                            Hoja preimpresa
+                          </a>
                           {/* Puente venta→factura: si la venta tiene factura ERP, link al
                               detalle /facturas/[id] (panel SIFEN: firma/envío/KUDE). */}
                           {v.factura_id && (
