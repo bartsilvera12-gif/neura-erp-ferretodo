@@ -436,6 +436,10 @@ export async function createVentaTransaccionalPg(
   //    stock, se lanza StockInsuficienteError con el detalle (la UI muestra el modal y reintenta
   //    con permitir_sin_stock=true). Si se autorizó, se continúa y el stock puede quedar negativo.
   const faltantes: FaltanteStock[] = [];
+  // Bloqueo DURO: productos con stock = 0 no se pueden vender ni aunque se
+  // autorice la venta sin stock (regla del cliente). Se distingue de la falta
+  // parcial (stock > 0 pero insuficiente), que sigue pidiendo confirmación.
+  const sinStockDuro: string[] = [];
 
   // 3a) Productos de reventa (controla_stock=true, sin receta).
   for (const [pid, need] of qtyByProduct) {
@@ -443,6 +447,7 @@ export async function createVentaTransaccionalPg(
     if (recetaByProducto.has(pid)) continue;
     // produccion_previa: descuenta su propio stock del terminado aunque controla_stock=false.
     if (!p.controlaStock && p.modo !== "produccion_previa") continue;
+    if (need > 0 && p.stock <= 0) sinStockDuro.push(p.nombre);
     if (p.stock < need) {
       faltantes.push({
         tipo: "producto", producto_id: pid, nombre: p.nombre, sku: p.sku,
@@ -462,6 +467,10 @@ export async function createVentaTransaccionalPg(
     }
   }
 
+  // Stock = 0: bloqueo duro, sin opción de forzar (no se agrega ni se completa).
+  if (sinStockDuro.length > 0) {
+    throw new Error(`Producto sin stock disponible: ${sinStockDuro.join(", ")}`);
+  }
   if (faltantes.length > 0 && !params.permitirSinStock) {
     throw new StockInsuficienteError(faltantes);
   }

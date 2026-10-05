@@ -274,6 +274,11 @@ export default function NuevaVentaPage() {
       presentacion_nombre,
       presentacion_cantidad_base,
     } = payload;
+    // Bloqueo por stock: no se permite agregar un producto sin stock (stock = 0).
+    if (p.controla_stock !== false && (p.stock_actual ?? 0) <= 0) {
+      setErrorVenta("Producto sin stock disponible");
+      return false;
+    }
     const precioPyg = precio_input;
     // Verificar stock vs lo ya cargado SOLO si el producto controla stock.
     // Venta sin stock (Fase 5): NO se bloquea por falta de stock al agregar; la
@@ -810,6 +815,12 @@ export default function NuevaVentaPage() {
   /** Agrega un producto directo desde el autocomplete: si ya está (sin presentación)
    *  suma +1; si no, crea la línea. Luego limpia el input y devuelve el foco. */
   function agregarProductoRapido(p: Producto) {
+    // Bloqueo por stock: no se permite vender un producto sin stock (stock = 0).
+    // No aplica a productos "sin control de stock" (servicios / menú).
+    if (p.controla_stock !== false && (p.stock_actual ?? 0) <= 0) {
+      setErrorLinea("Producto sin stock disponible");
+      return;
+    }
     const precio = precioPorTipo(p, "minorista");
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.producto_id === p.id && !it.presentacion_id);
@@ -904,6 +915,17 @@ export default function NuevaVentaPage() {
     }
     if (!cajaActivaFinal) {
       setErrorVenta("Hay varias cajas abiertas: seleccioná la caja activa antes de confirmar.");
+      return;
+    }
+    // Bloqueo por stock: no se puede completar la venta si alguna línea es un
+    // producto con control de stock y stock = 0. (Los productos "sin control"
+    // —servicios/menú— no se validan.)
+    const lineaSinStock = items.find((it) => {
+      const prod = productos.find((x) => x.id === it.producto_id);
+      return prod != null && prod.controla_stock !== false && (prod.stock_actual ?? 0) <= 0;
+    });
+    if (lineaSinStock) {
+      setErrorVenta(`Producto sin stock disponible: ${lineaSinStock.producto_nombre}`);
       return;
     }
     // Guard duro contra doble submit: si ya hay una confirmación en vuelo, cortar
@@ -1317,9 +1339,11 @@ export default function NuevaVentaPage() {
                           <button
                             type="button"
                             id={`combo-opt-${i}`}
+                            disabled={sinStock}
+                            title={sinStock ? "Producto sin stock disponible" : undefined}
                             onMouseEnter={() => setComboHighlight(i)}
                             onClick={() => agregarProductoRapido(p)}
-                            className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${i === comboHighlight ? "bg-[#0EA5E9]/8" : "hover:bg-slate-50"}`}
+                            className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${sinStock ? "opacity-60 cursor-not-allowed" : i === comboHighlight ? "bg-[#0EA5E9]/8" : "hover:bg-slate-50"}`}
                           >
                             <ProductoThumb url={p.imagen_url} alt={p.nombre} />
                             <div className="min-w-0 flex-1">
@@ -1333,9 +1357,15 @@ export default function NuevaVentaPage() {
                               </div>
                             </div>
                             <span className="shrink-0 text-sm font-bold tabular-nums text-slate-800">{formatGs(precioPorTipo(p, "minorista"))}</span>
-                            <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#0EA5E9]/10 px-2.5 py-1 text-xs font-bold text-[#0284C7]">
-                              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> Agregar
-                            </span>
+                            {sinStock ? (
+                              <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600">
+                                Sin stock
+                              </span>
+                            ) : (
+                              <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#0EA5E9]/10 px-2.5 py-1 text-xs font-bold text-[#0284C7]">
+                                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> Agregar
+                              </span>
+                            )}
                           </button>
                         </li>
                       );

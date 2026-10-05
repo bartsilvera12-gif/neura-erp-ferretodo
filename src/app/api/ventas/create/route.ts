@@ -445,6 +445,7 @@ export async function POST(request: NextRequest) {
     const msg = err instanceof Error ? err.message : "Error al crear la venta.";
     const status =
       msg.includes("Stock insuficiente") ||
+      msg.includes("sin stock disponible") ||
       msg.includes("no existen") ||
       msg.includes("Cliente no encontrado") ||
       msg.includes("Totales no coinciden") ||
