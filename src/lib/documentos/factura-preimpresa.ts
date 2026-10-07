@@ -2,13 +2,20 @@
  * Factura sobre HOJA PREIMPRESA (Ferretodo).
  *
  * El papel ya trae impreso el encabezado (logo, timbrado, R.U.C., "FACTURA",
- * número) y está dividido en 3 copias en una misma A4 (Original / Duplicado /
+ * número) y está dividido en 3 copias en una misma hoja (Original / Duplicado /
  * Triplicado). Este módulo imprime SOLO los datos variables (fecha, cliente,
  * condición, detalle de productos, impuestos y totales) ubicados en el cuerpo
  * en blanco de cada copia. NO imprime logo, timbrado, R.U.C. ni número.
  *
- * Incluye una barra de CALIBRACIÓN en pantalla (no se imprime) para que el
- * cliente ajuste márgenes/posición/tamaño a su papel y lo guarde (localStorage).
+ * MEDIDAS reales del template de la Gráfica (PDF vectorial):
+ *   - Hoja: 215 × 330 mm (Oficio), NO A4.
+ *   - Recuadro del encabezado (ya impreso) termina, desde el borde superior:
+ *       copia 1 → 24.8 mm · copia 2 → 131.6 mm · copia 3 → 239.3 mm
+ *     (separación entre copias ≈ 107 mm; márgenes izq 11.6 / der 15 mm).
+ *   El cuerpo (datos) arranca justo debajo de cada recuadro.
+ *
+ * Incluye una barra de CALIBRACIÓN en pantalla (no se imprime) para ajustar la
+ * posición a la impresora/papel real y guardarla (localStorage).
  *
  * Reutiliza los helpers de formato del comprobante A4 para no duplicar lógica.
  */
@@ -159,34 +166,38 @@ function cuerpoCopia(d: DatosFacturaPreimpresa): string {
   </div>`;
 }
 
-/** Página completa A4 con las 3 copias + barra de calibración. */
+/** Página completa (Oficio 215×330) con las 3 copias posicionadas + barra de calibración. */
 export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
   const cuerpo = cuerpoCopia(d);
-  const copia = `<section class="copia">${cuerpo}</section>`;
+  const copias = [0, 1, 2]
+    .map((i) => `<section class="copia" style="--i:${i}">${cuerpo}</section>`)
+    .join("");
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8" />
 <title>Factura (hoja preimpresa) ${escapeHtml(d.numeroControl)} — Ferretodo</title>
 <style>
   :root{
-    --page-top: 0mm;   /* bajar todo desde el borde superior */
-    --copia-h: 99mm;   /* alto de cada copia */
-    --head: 22mm;      /* espacio reservado al encabezado impreso */
-    --mleft: 12mm;     /* margen izquierdo */
-    --mright: 8mm;     /* margen derecho */
-    --fs: 1;           /* escala de letra */
+    /* Medidas por defecto tomadas del template de la Gráfica (Oficio 215×330). */
+    --inicio: 27mm;   /* dónde arranca el cuerpo de la 1ª copia (bajo el encabezado) */
+    --paso: 107mm;    /* separación entre el inicio de cada copia */
+    --left: 12mm;     /* margen izquierdo del cuerpo */
+    --width: 188mm;   /* ancho del cuerpo (215 − izq − der) */
+    --offset-y: 0mm;  /* corrimiento fino vertical de TODO */
+    --offset-x: 0mm;  /* corrimiento fino horizontal de TODO */
+    --fs: 1;          /* escala de letra */
   }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background:#f3f4f6; }
+  html, body { margin:0; padding:0; background:#eef0f2; }
   body { font-family: Arial, Helvetica, sans-serif; color:#000; }
 
   .toolbar{
     position: sticky; top:0; z-index:50; background:#111827; color:#fff;
-    padding:10px 12px; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end;
+    padding:10px 12px; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end;
     font-size:12px; box-shadow:0 2px 8px rgba(0,0,0,.2);
   }
   .toolbar .grp{ display:flex; flex-direction:column; gap:3px; }
   .toolbar label{ font-size:10px; color:#9ca3af; }
-  .toolbar input[type=number]{ width:70px; padding:4px 6px; border-radius:6px; border:1px solid #374151; background:#1f2937; color:#fff; }
+  .toolbar input[type=number]{ width:74px; padding:4px 6px; border-radius:6px; border:1px solid #374151; background:#1f2937; color:#fff; }
   .toolbar .chk{ flex-direction:row; align-items:center; gap:6px; }
   .toolbar button{ padding:7px 14px; border-radius:8px; border:0; font-weight:700; cursor:pointer; }
   .toolbar .print{ background:#10b981; color:#fff; }
@@ -194,34 +205,37 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
   .toolbar .hint{ flex-basis:100%; color:#9ca3af; font-size:11px; }
 
   .sheet{
-    width:210mm; min-height:297mm; margin:12px auto; background:#fff;
-    padding-top: var(--page-top); box-shadow:0 1px 10px rgba(0,0,0,.15);
+    position: relative;
+    width:215mm; height:330mm; margin:12px auto; background:#fff;
+    box-shadow:0 1px 10px rgba(0,0,0,.15);
   }
   .copia{
-    height: var(--copia-h);
-    padding: var(--head) var(--mright) 4mm var(--mleft);
-    overflow:hidden; position:relative;
+    position:absolute;
+    left: calc(var(--left) + var(--offset-x));
+    width: var(--width);
+    top: calc(var(--inicio) + var(--i) * var(--paso) + var(--offset-y));
     font-size: calc(9pt * var(--fs)); line-height:1.3;
   }
-  .guias .copia{ outline:1px dashed #cbd5e1; outline-offset:-1px; }
+  /* Guías en pantalla: marca el inicio de cada copia (no se imprime). */
+  .guias .copia{ outline:1px dashed #4FAEB2; outline-offset:2px; }
   .guias .copia::before{
-    content:""; position:absolute; left:0; right:0; top:0; height: var(--head);
-    background:repeating-linear-gradient(45deg,#f1f5f9,#f1f5f9 6px,#e2e8f0 6px,#e2e8f0 12px);
-    opacity:.5;
+    content:"copia " counter(cop); counter-increment:cop;
+    position:absolute; left:-1px; top:-12px; font-size:8px; color:#4FAEB2;
   }
+  .guias .sheet{ counter-reset:cop; }
 
   .cab{ display:flex; justify-content:space-between; gap:12px; margin-bottom:2mm; }
   .cli > div{ margin:0.3mm 0; }
-  .cli .row2{ display:flex; gap:16px; }
+  .cli .row2{ display:flex; gap:18px; }
   table.items{ width:100%; border-collapse:collapse; margin-top:2mm; font-size: calc(8.5pt * var(--fs)); }
   table.items th{ border-bottom:1px solid #000; text-align:left; padding:1mm 1.5mm; font-size: calc(7.5pt * var(--fs)); letter-spacing:.3px; }
   table.items td{ padding:0.8mm 1.5mm; border-bottom:1px dotted #999; vertical-align:top; }
-  .items .c{ width:12mm; text-align:center; }
+  .items .c{ width:14mm; text-align:center; }
   .items .desc{ text-align:left; }
-  .items .n{ width:22mm; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .items .n{ width:24mm; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .tot{ margin-top:2mm; font-size: calc(8.5pt * var(--fs)); }
   .tot .sub{ display:flex; justify-content:flex-end; gap:0; font-weight:700; border-top:1px solid #000; padding-top:1mm; }
-  .tot .sub span{ width:22mm; text-align:right; }
+  .tot .sub span{ width:24mm; text-align:right; }
   .tot .sub span:first-child{ width:auto; margin-right:auto; text-align:left; }
   .tot .letras{ margin-top:1mm; }
   .tot .liq{ margin-top:0.5mm; }
@@ -230,33 +244,32 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
   @media print{
     html, body { background:#fff; }
     .toolbar{ display:none !important; }
-    .sheet{ width:auto; min-height:auto; margin:0; box-shadow:none; }
-    @page { size: A4 portrait; margin:0; }
+    .sheet{ margin:0; box-shadow:none; }
+    @page { size: 215mm 330mm; margin:0; }
   }
 </style></head>
 <body>
   <div class="toolbar">
-    <div class="grp"><label>Bajar todo (mm)</label><input type="number" id="page-top" step="1" value="0"></div>
-    <div class="grp"><label>Alto por copia (mm)</label><input type="number" id="copia-h" step="1" value="99"></div>
-    <div class="grp"><label>Espacio encabezado (mm)</label><input type="number" id="head" step="1" value="22"></div>
-    <div class="grp"><label>Margen izq. (mm)</label><input type="number" id="mleft" step="1" value="12"></div>
-    <div class="grp"><label>Margen der. (mm)</label><input type="number" id="mright" step="1" value="8"></div>
+    <div class="grp"><label>Inicio 1ª copia (mm)</label><input type="number" id="inicio" step="1" value="27"></div>
+    <div class="grp"><label>Separación copias (mm)</label><input type="number" id="paso" step="1" value="107"></div>
+    <div class="grp"><label>Margen izq. (mm)</label><input type="number" id="left" step="1" value="12"></div>
+    <div class="grp"><label>Ancho (mm)</label><input type="number" id="width" step="1" value="188"></div>
+    <div class="grp"><label>Bajar/subir todo (mm)</label><input type="number" id="offset-y" step="1" value="0"></div>
+    <div class="grp"><label>Mover izq/der (mm)</label><input type="number" id="offset-x" step="1" value="0"></div>
     <div class="grp"><label>Letra (%)</label><input type="number" id="fs" step="5" value="100"></div>
-    <div class="grp chk"><input type="checkbox" id="guias"><label for="guias" style="color:#fff">Mostrar guías</label></div>
+    <div class="grp chk"><input type="checkbox" id="guias"><label for="guias" style="color:#fff">Guías</label></div>
     <button class="reset" onclick="resetCal()">Restablecer</button>
     <button class="print" onclick="window.print()">Imprimir</button>
-    <div class="hint">Ajustá los valores hasta que los datos caigan en los espacios en blanco de tu hoja, imprimí una prueba y repetí. Los ajustes se guardan solos en esta computadora.</div>
+    <div class="hint">Hoja Oficio 215×330 mm, 3 copias. Imprimí una prueba sobre un papel común, superponé con el preimpreso y ajustá hasta que calce. Los ajustes se guardan solos en esta computadora.</div>
   </div>
 
   <div class="sheet" id="sheet">
-    ${copia}
-    ${copia}
-    ${copia}
+    ${copias}
   </div>
 
 <script>
-  var KEY = 'ferretodo_factura_preimpresa_cal_v1';
-  var MM = ['page-top','copia-h','head','mleft','mright'];
+  var KEY = 'ferretodo_factura_preimpresa_cal_v2';
+  var MM = ['inicio','paso','left','width','offset-y','offset-x'];
   var root = document.documentElement;
   function apply(id, val){
     if (id === 'fs') root.style.setProperty('--fs', String((Number(val)||100)/100));
@@ -286,7 +299,7 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
     document.getElementById('sheet').classList.toggle('guias', this.checked); save();
   });
   window.resetCal = function(){
-    var def = { 'page-top':0, 'copia-h':99, 'head':22, 'mleft':12, 'mright':8, 'fs':100, guias:false };
+    var def = { 'inicio':27, 'paso':107, 'left':12, 'width':188, 'offset-y':0, 'offset-x':0, 'fs':100, guias:false };
     MM.concat('fs').forEach(function(id){ document.getElementById(id).value = def[id]; apply(id, def[id]); });
     document.getElementById('guias').checked = false;
     document.getElementById('sheet').classList.remove('guias');
