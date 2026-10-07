@@ -30,6 +30,7 @@ import { getMarketingTasks, createMarketingTask, updateTaskStatus } from "@/lib/
 import { getUsuariosActivosEmpresa, type UsuarioEmpresa } from "@/lib/usuarios/empresa";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { SifenEstadoBadge } from "@/components/sifen/SifenEstadoBadge";
+import { EstadoCuentaClienteBlock } from "@/components/cobros/EstadoCuentaClienteBlock";
 import { useFacturaSifenEstados } from "@/hooks/useFacturaSifenEstados";
 import MontoInput from "@/components/ui/MontoInput";
 import { getPlanes } from "@/lib/planes/storage";
@@ -2039,6 +2040,10 @@ export default function ClienteDetailPage() {
           {/* ── ESTADO DE CUENTA ─────────────────────────────────────────── */}
           {activeTab === "estado_cuenta" && (
             <div className="space-y-4">
+              {/* Deudas del cliente: cuentas por cobrar (ventas a crédito) con saldo,
+                  vencimientos y cobro directo. */}
+              <EstadoCuentaClienteBlock clienteId={id} />
+
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <SectionTitle>Facturas del cliente</SectionTitle>
                 <div className="flex flex-wrap gap-2">
