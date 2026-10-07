@@ -47,6 +47,10 @@ export default function TransferenciaDetallePage() {
   const [cargando, setCargando] = useState(true);
   const [accion, setAccion] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Buscador de producto existente en la recepción (por línea).
+  const [busq, setBusq] = useState<Record<string, string>>({});
+  const [resBusq, setResBusq] = useState<Record<string, Array<{ id: string; nombre: string; sku: string | null; codigo_barras: string | null }>>>({});
+  const [buscando, setBuscando] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -63,9 +67,12 @@ export default function TransferenciaDetallePage() {
       const inicial: Record<string, Asignacion> = {};
       for (const it of t.items ?? []) {
         const m = s[it.id];
+        // Si hay match, se propone ese producto ya seleccionado. Si no, arranca en
+        // "Usar existente" con el buscador vacío (empuja a elegir el que ya existe
+        // antes de crear un duplicado); el nombre queda listo por si hay que crearlo.
         inicial[it.id] = m
           ? { modo: "existente", producto_id: m.producto_id, sku: m.sku ?? "", nombre: m.nombre }
-          : { modo: "crear", producto_id: "", sku: it.sku_origen ?? "", nombre: it.nombre_origen };
+          : { modo: "existente", producto_id: "", sku: it.sku_origen ?? "", nombre: it.nombre_origen };
       }
       setAsig(inicial);
     } catch (e) {
@@ -77,6 +84,31 @@ export default function TransferenciaDetallePage() {
 
   useEffect(() => { void cargar(); }, [cargar]);
 
+  /** Busca productos del catálogo de ESTA empresa (destino) para elegir el existente. */
+  async function buscarProductoDestino(itemId: string, q: string) {
+    setBusq((p) => ({ ...p, [itemId]: q }));
+    if (q.trim().length < 2) { setResBusq((p) => ({ ...p, [itemId]: [] })); return; }
+    setBuscando(itemId);
+    try {
+      const r = await fetchWithSupabaseSession(`/api/productos/search?q=${encodeURIComponent(q.trim())}&limit=8`, { cache: "no-store" });
+      const j = await r.json();
+      const items = ((j?.data?.items ?? []) as Array<Record<string, unknown>>).map((x) => ({
+        id: String(x.id), nombre: String(x.nombre ?? ""),
+        sku: (x.sku as string) ?? null, codigo_barras: (x.codigo_barras as string) ?? null,
+      }));
+      setResBusq((p) => ({ ...p, [itemId]: items }));
+    } catch {
+      setResBusq((p) => ({ ...p, [itemId]: [] }));
+    } finally {
+      setBuscando(null);
+    }
+  }
+  function elegirProductoExistente(itemId: string, prod: { id: string; nombre: string; sku: string | null }) {
+    setAsig((p) => ({ ...p, [itemId]: { ...p[itemId], modo: "existente", producto_id: prod.id, nombre: prod.nombre, sku: prod.sku ?? "" } }));
+    setResBusq((p) => ({ ...p, [itemId]: [] }));
+    setBusq((p) => ({ ...p, [itemId]: "" }));
+  }
+
   async function recibir() {
     if (!trf) return;
     setErr(null);
@@ -84,8 +116,8 @@ export default function TransferenciaDetallePage() {
       const a = asig[it.id];
       if (!a) return setErr(`Falta definir "${it.nombre_origen}".`);
       if (a.modo === "existente" && !a.producto_id) return setErr(`Elegí el producto para "${it.nombre_origen}".`);
-      if (a.modo === "crear" && (!a.sku.trim() || !a.nombre.trim())) {
-        return setErr(`Cargá código y nombre para "${it.nombre_origen}".`);
+      if (a.modo === "crear" && !a.nombre.trim()) {
+        return setErr(`Cargá el nombre para "${it.nombre_origen}".`);
       }
     }
     setAccion(true);
@@ -98,7 +130,7 @@ export default function TransferenciaDetallePage() {
             const a = asig[it.id];
             return a.modo === "existente"
               ? { item_id: it.id, producto_destino_id: a.producto_id }
-              : { item_id: it.id, crear: { sku: a.sku.trim(), nombre: a.nombre.trim() } };
+              : { item_id: it.id, crear: { nombre: a.nombre.trim() } };
           }),
         }),
       });
@@ -207,28 +239,52 @@ export default function TransferenciaDetallePage() {
                           {(["existente", "crear"] as const).map((m) => (
                             <button key={m} type="button"
                               onClick={() => setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], modo: m } }))}
-                              disabled={m === "existente" && !s}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium ${a?.modo === m ? "bg-[#4FAEB2] text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"}`}>
+                              className={`rounded-md px-2 py-1 text-[11px] font-medium ${a?.modo === m ? "bg-[#4FAEB2] text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
                               {m === "existente" ? "Usar existente" : "Crear producto"}
                             </button>
                           ))}
                         </div>
                         {a?.modo === "existente" ? (
-                          s ? (
-                            <p className="text-xs text-slate-700">
-                              {s.nombre} <span className="text-slate-400">{s.sku ?? ""}</span>
-                            </p>
-                          ) : (
-                            <p className="text-xs text-slate-400">No hay ningún producto con ese código acá.</p>
-                          )
+                          <div className="space-y-1">
+                            {a?.producto_id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-emerald-700">
+                                  ✓ {a.nombre}
+                                  {a.sku ? <span className="font-normal text-slate-400"> · {a.sku}</span> : null}
+                                  {s && s.producto_id === a.producto_id ? <span className="ml-1 text-[10px] text-slate-400">(sugerido)</span> : null}
+                                </span>
+                                <button type="button" onClick={() => setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], producto_id: "" } }))} className="text-[11px] text-sky-600 hover:underline">cambiar</button>
+                              </div>
+                            ) : (
+                              <>
+                                <input value={busq[it.id] ?? ""} placeholder="Buscar producto por nombre, SKU o código…"
+                                  onChange={(e) => void buscarProductoDestino(it.id, e.target.value)}
+                                  className={`${inputC} w-72`} />
+                                {buscando === it.id && <p className="text-[11px] text-slate-400">Buscando…</p>}
+                                {(resBusq[it.id] ?? []).length > 0 && (
+                                  <ul className="max-h-44 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm">
+                                    {(resBusq[it.id] ?? []).map((p) => (
+                                      <li key={p.id}>
+                                        <button type="button" onClick={() => elegirProductoExistente(it.id, p)} className="flex w-full flex-col items-start px-2.5 py-1.5 text-left hover:bg-slate-50">
+                                          <span className="text-xs font-medium text-slate-800">{p.nombre}</span>
+                                          <span className="text-[10px] text-slate-400">{p.sku ?? ""}{p.codigo_barras ? ` · ${p.codigo_barras}` : ""}</span>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {(busq[it.id]?.trim().length ?? 0) >= 2 && buscando !== it.id && (resBusq[it.id] ?? []).length === 0 && (
+                                  <p className="text-[11px] text-slate-400">Sin resultados. Probá otro término o usá “Crear producto”.</p>
+                                )}
+                              </>
+                            )}
+                          </div>
                         ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            <input value={a?.sku ?? ""} placeholder="Código"
-                              onChange={(e) => setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], sku: e.target.value } }))}
-                              className={`${inputC} w-28`} />
-                            <input value={a?.nombre ?? ""} placeholder="Nombre"
+                          <div className="space-y-1">
+                            <input value={a?.nombre ?? ""} placeholder="Nombre del producto"
                               onChange={(e) => setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], nombre: e.target.value } }))}
-                              className={`${inputC} w-56`} />
+                              className={`${inputC} w-72`} />
+                            <p className="text-[10px] text-slate-400">Se le asignará un código interno automático.</p>
                           </div>
                         )}
                       </div>

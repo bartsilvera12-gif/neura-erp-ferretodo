@@ -20,6 +20,7 @@
  * inversa, que deja los dos movimientos a la vista en vez de borrar historia.
  */
 import { getChatPostgresPool } from "@/lib/supabase/chat-pg-pool";
+import { generarCodigoInternoProducto } from "@/lib/inventario/codigo-interno-server";
 
 const TRF = "neura_transferencias";
 
@@ -350,9 +351,13 @@ export async function sugerirProductosDestino(
     for (const row of it.rows as unknown as Array<{ id: string; sku_origen: string | null }>) {
       const sku = (row.sku_origen ?? "").trim();
       if (!sku) { out[row.id] = null; continue; }
+      // Se busca por SKU O por código de barras: en el grupo el mismo código
+      // numérico suele estar guardado en ambos campos, y así se encuentra más seguido.
       const m = await c.query(
         `SELECT id::text, nombre, sku FROM ${tProd}
-          WHERE empresa_id = $1::uuid AND UPPER(TRIM(sku)) = UPPER($2) AND activo LIMIT 1`,
+          WHERE empresa_id = $1::uuid
+            AND (UPPER(TRIM(sku)) = UPPER($2) OR UPPER(TRIM(codigo_barras)) = UPPER($2))
+            AND activo LIMIT 1`,
         [empresaDestinoId, sku]
       );
       out[row.id] = m.rows.length > 0
@@ -376,7 +381,9 @@ export interface RecibirTransferenciaInput {
   asignaciones: Array<{
     item_id: string;
     producto_destino_id?: string | null;
-    crear?: { sku: string; nombre: string } | null;
+    // Al crear: el SKU es opcional (si no viene se usa el del origen); el código
+    // de barras se genera automático (INT-...). Solo hace falta el nombre.
+    crear?: { sku?: string; nombre: string } | null;
   }>;
   usuarioId?: string | null;
   usuarioNombre?: string | null;
@@ -436,28 +443,44 @@ export async function recibirTransferencia(
       let creado = false;
 
       if (!productoDestinoId) {
-        const sku = a.crear?.sku?.trim() ?? "";
-        const nombre = a.crear?.nombre?.trim() ?? "";
-        if (!sku || !nombre) {
-          throw new TransferenciaError(`Elegí un producto existente o cargá código y nombre para "${item.nombre_origen}".`);
+        // SKU: el que cargó quien recibe, o el del origen como referencia.
+        const sku = (a.crear?.sku?.trim() || item.sku_origen?.trim() || "").trim();
+        const nombre = (a.crear?.nombre?.trim() || item.nombre_origen?.trim() || "").trim();
+        if (!nombre) {
+          throw new TransferenciaError(`Elegí un producto existente o cargá el nombre para "${item.nombre_origen}".`);
         }
-        // Si ya existe uno con ese codigo se usa ese: crear un duplicado dejaria
-        // el stock partido en dos productos distintos.
-        const dup = await client.query(
-          `SELECT id::text FROM ${tProd} WHERE empresa_id = $1::uuid AND UPPER(TRIM(sku)) = UPPER($2) LIMIT 1`,
-          [input.empresaDestinoId, sku]
-        );
+        // Si ya existe uno con ese código (SKU o código de barras) se usa ese: crear
+        // un duplicado dejaría el stock partido en dos productos distintos.
+        const dup = sku
+          ? await client.query(
+              `SELECT id::text FROM ${tProd}
+                WHERE empresa_id = $1::uuid
+                  AND (UPPER(TRIM(sku)) = UPPER($2) OR UPPER(TRIM(codigo_barras)) = UPPER($2))
+                LIMIT 1`,
+              [input.empresaDestinoId, sku]
+            )
+          : { rows: [] as Array<{ id: string }> };
         if (dup.rows.length > 0) {
           productoDestinoId = String(dup.rows[0].id);
         } else {
+          // Producto NUEVO: código interno automático (INT-...) correlativo, igual
+          // que en el alta de productos. Best-effort: si falla, queda sin código.
+          let codigoInterno: string | null = null;
+          try {
+            codigoInterno = await generarCodigoInternoProducto(input.empresaDestinoId);
+          } catch (e) {
+            console.error("[transferencias] código interno auto falló (best-effort)", e instanceof Error ? e.message : e);
+          }
+          const skuFinal = sku || codigoInterno || nombre;
           const ins = await client.query(
             `INSERT INTO ${tProd}
-               (empresa_id, nombre, sku, costo_promedio, precio_venta, stock_actual, unidad_medida, activo)
-             VALUES ($1::uuid,$2,$3,$4::numeric,0,0,$5,true)
+               (empresa_id, nombre, sku, codigo_barras, codigo_barras_interno,
+                costo_promedio, precio_venta, stock_actual, unidad_medida, activo)
+             VALUES ($1::uuid,$2,$3,$4,$5,$6::numeric,0,0,$7,true)
              RETURNING id::text`,
             [
-              input.empresaDestinoId, nombre, sku, item.costo_unitario,
-              item.unidad_medida || "Unidad",
+              input.empresaDestinoId, nombre, skuFinal, codigoInterno, codigoInterno != null,
+              item.costo_unitario, item.unidad_medida || "Unidad",
             ]
           );
           productoDestinoId = String(ins.rows[0].id);
