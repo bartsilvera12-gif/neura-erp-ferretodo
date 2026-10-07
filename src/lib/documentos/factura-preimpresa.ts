@@ -144,7 +144,6 @@ function cuerpoCopia(d: DatosFacturaPreimpresa): string {
   return `
   <div class="cab">
     <span><b>Fecha:</b> ${escapeHtml(d.fecha)}</span>
-    <span><b>Condición de venta:</b> ${escapeHtml(d.condicion)}</span>
   </div>
   <div class="cli">
     <div><b>Señor(es):</b> ${escapeHtml(d.cliente.nombre)}</div>
@@ -172,6 +171,11 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
   const copias = [0, 1, 2]
     .map((i) => `<section class="copia" style="--i:${i}">${cuerpo}</section>`)
     .join("");
+  // La condición de venta va en el espacio preimpreso del encabezado (etiqueta
+  // "CONDICIÓN DE VENTA:"), una por copia, con su propia posición calibrable.
+  const conds = [0, 1, 2]
+    .map((i) => `<div class="cond" style="--i:${i}">${escapeHtml(d.condicion)}</div>`)
+    .join("");
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8" />
 <title>Factura (hoja preimpresa) ${escapeHtml(d.numeroControl)} — Ferretodo</title>
@@ -185,6 +189,8 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
     --offset-y: 0mm;  /* corrimiento fino vertical de TODO */
     --offset-x: 0mm;  /* corrimiento fino horizontal de TODO */
     --fs: 1;          /* escala de letra */
+    --cond-top: 22mm; /* condición de venta: alto de la 1ª copia (dentro del encabezado) */
+    --cond-left: 174mm; /* condición de venta: después de la etiqueta preimpresa */
   }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; background:#eef0f2; }
@@ -216,6 +222,14 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
     top: calc(var(--inicio) + var(--i) * var(--paso) + var(--offset-y));
     font-size: calc(9pt * var(--fs)); line-height:1.3;
   }
+  .cond{
+    position:absolute;
+    left: calc(var(--cond-left) + var(--offset-x));
+    top: calc(var(--cond-top) + var(--i) * var(--paso) + var(--offset-y));
+    font-size: calc(8.5pt * var(--fs)); font-weight:700; white-space:nowrap;
+  }
+  .guias .cond{ outline:1px dashed #e11d48; }
+
   /* Guías en pantalla: marca el inicio de cada copia (no se imprime). */
   .guias .copia{ outline:1px dashed #4FAEB2; outline-offset:2px; }
   .guias .copia::before{
@@ -256,6 +270,8 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
     <div class="grp"><label>Ancho (mm)</label><input type="number" id="width" step="1" value="188"></div>
     <div class="grp"><label>Bajar/subir todo (mm)</label><input type="number" id="offset-y" step="1" value="0"></div>
     <div class="grp"><label>Mover izq/der (mm)</label><input type="number" id="offset-x" step="1" value="0"></div>
+    <div class="grp"><label>Condición: arriba (mm)</label><input type="number" id="cond-top" step="1" value="22"></div>
+    <div class="grp"><label>Condición: izq (mm)</label><input type="number" id="cond-left" step="1" value="174"></div>
     <div class="grp"><label>Letra (%)</label><input type="number" id="fs" step="5" value="100"></div>
     <div class="grp chk"><input type="checkbox" id="guias"><label for="guias" style="color:#fff">Guías</label></div>
     <button class="reset" onclick="resetCal()">Restablecer</button>
@@ -265,11 +281,12 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
 
   <div class="sheet" id="sheet">
     ${copias}
+    ${conds}
   </div>
 
 <script>
-  var KEY = 'ferretodo_factura_preimpresa_cal_v2';
-  var MM = ['inicio','paso','left','width','offset-y','offset-x'];
+  var KEY = 'ferretodo_factura_preimpresa_cal_v3';
+  var MM = ['inicio','paso','left','width','offset-y','offset-x','cond-top','cond-left'];
   var root = document.documentElement;
   function apply(id, val){
     if (id === 'fs') root.style.setProperty('--fs', String((Number(val)||100)/100));
@@ -299,7 +316,7 @@ export function paginaFacturaPreimpresa(d: DatosFacturaPreimpresa): string {
     document.getElementById('sheet').classList.toggle('guias', this.checked); save();
   });
   window.resetCal = function(){
-    var def = { 'inicio':27, 'paso':107, 'left':12, 'width':188, 'offset-y':0, 'offset-x':0, 'fs':100, guias:false };
+    var def = { 'inicio':27, 'paso':107, 'left':12, 'width':188, 'offset-y':0, 'offset-x':0, 'cond-top':22, 'cond-left':174, 'fs':100, guias:false };
     MM.concat('fs').forEach(function(id){ document.getElementById(id).value = def[id]; apply(id, def[id]); });
     document.getElementById('guias').checked = false;
     document.getElementById('sheet').classList.remove('guias');
