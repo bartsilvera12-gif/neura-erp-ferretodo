@@ -96,6 +96,29 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
   const iva10Liq = Math.round((totIva10 / 1.1) * 0.1);
   const ivaTotal = iva5Liq + iva10Liq;
 
+  // Producto(s) entregado(s) como cambio: misma lógica de IVA (exenta/5%/10%),
+  // cada línea con su IVA real (viene de devoluciones_venta_cambios.tipo_iva).
+  const esCambio = d.resolucion === "cambio" && (d.cambios?.length ?? 0) > 0;
+  const filasCambio: Fila[] = (esCambio ? d.cambios ?? [] : []).map((c) => {
+    const totalLinea = Number(c.total || 0);
+    const iva = String(c.tipo_iva || "10%").toUpperCase();
+    return {
+      cant: Number(c.cantidad || 0),
+      nombre: c.producto_nombre,
+      pu: Number(c.precio_unitario || 0),
+      exenta: iva === "EXENTA" ? totalLinea : 0,
+      iva5:   iva === "5%" ? totalLinea : 0,
+      iva10:  iva === "10%" ? totalLinea : 0,
+    };
+  });
+  const camExenta = filasCambio.reduce((s, f) => s + f.exenta, 0);
+  const camIva5   = filasCambio.reduce((s, f) => s + f.iva5, 0);
+  const camIva10  = filasCambio.reduce((s, f) => s + f.iva10, 0);
+  const camTotal  = camExenta + camIva5 + camIva10;
+  const camIva5Liq  = Math.round((camIva5 / 1.05) * 0.05);
+  const camIva10Liq = Math.round((camIva10 / 1.1) * 0.1);
+  const camIvaTotal = camIva5Liq + camIva10Liq;
+
   const filasHtml = filas.map((f) => `<tr>
     <td class="c cant">${f.cant}</td>
     <td class="c desc">${escapeHtml(f.nombre)}</td>
@@ -104,12 +127,54 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
     <td class="c num">${f.iva5 > 0 ? fmtGs(f.iva5) : "0"}</td>
     <td class="c num">${f.iva10 > 0 ? fmtGs(f.iva10) : "0"}</td>
   </tr>`).join("");
-  const MIN_FILAS = 12;
+  // Menos filas vacías cuando además imprimimos la tabla del cambio, para que
+  // ambas entren en la hoja sin desbordar.
+  const MIN_FILAS = esCambio ? 6 : 12;
   const vacias = Math.max(0, MIN_FILAS - filas.length);
   const filasVaciasHtml = Array.from({ length: vacias }).map(() => `<tr class="empty">
     <td class="c cant">&nbsp;</td><td class="c desc">&nbsp;</td><td class="c num">&nbsp;</td>
     <td class="c num">&nbsp;</td><td class="c num">&nbsp;</td><td class="c num">&nbsp;</td>
   </tr>`).join("");
+
+  const filasCambioHtml = filasCambio.map((f) => `<tr>
+    <td class="c cant">${f.cant}</td>
+    <td class="c desc">${escapeHtml(f.nombre)}</td>
+    <td class="c num">${fmtGs(f.pu)}</td>
+    <td class="c num">${f.exenta > 0 ? fmtGs(f.exenta) : "0"}</td>
+    <td class="c num">${f.iva5 > 0 ? fmtGs(f.iva5) : "0"}</td>
+    <td class="c num">${f.iva10 > 0 ? fmtGs(f.iva10) : "0"}</td>
+  </tr>`).join("");
+
+  // Bloque itemizado del producto entregado (solo en cambios), con su propio
+  // total e IVA. No altera la diferencia: es informativo del nuevo producto.
+  const bloqueCambioHtml = esCambio ? `
+    <div class="doc-banner" style="font-size:13px;margin-top:14px;">PRODUCTOS ENTREGADOS EN CAMBIO</div>
+    <table class="items">
+      <thead>
+        <tr>
+          <th class="cant">CANTIDAD</th>
+          <th class="desc">DESCRIPCION</th>
+          <th class="num">P.UNITARIO</th>
+          <th class="num">EXENTA</th>
+          <th class="num">IVA 5%</th>
+          <th class="num">IVA 10%</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filasCambioHtml}
+        <tr class="tot">
+          <td class="cant"></td><td class="desc">TOTAL ENTREGADO</td><td class="num"></td>
+          <td class="num">${fmtGs(camExenta)}</td><td class="num">${fmtGs(camIva5)}</td><td class="num">${fmtGs(camIva10)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="pie">
+      <div class="linea"><span class="lbl">SON GUARANIES (ENTREGADO):</span> <span class="val">${escapeHtml(numeroALetras(camTotal))}</span></div>
+      <div class="linea">
+        <span class="lbl">LIQUIDACION DEL IVA (ENTREGADO)</span>
+        <span class="val">&nbsp;&nbsp;(5%): ${fmtGs(camIva5Liq)}&nbsp;&nbsp;&nbsp;&nbsp;(10%): ${fmtGs(camIva10Liq)}&nbsp;&nbsp;&nbsp;&nbsp;TOTAL IVA: ${fmtGs(camIvaTotal)}</span>
+      </div>
+    </div>` : "";
 
   const dif = d.diferencia;
   const difTxt = dif > 0 ? "DIFERENCIA A COBRAR" : dif < 0 ? "REEMBOLSO AL CLIENTE" : "SIN MOVIMIENTO DE CAJA";
@@ -188,6 +253,7 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
       </div>
     </div>
 
+    ${esCambio ? `<div class="doc-banner" style="font-size:13px;">PRODUCTOS DEVUELTOS</div>` : ""}
     <table class="items">
       <thead>
         <tr>
@@ -212,17 +278,14 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
         </tr>
       </tbody>
     </table>
+    ${bloqueCambioHtml}
 
     <div class="pie">
-      <div class="linea"><span class="lbl">SON GUARANIES:</span> <span class="val">${escapeHtml(numeroALetras(total))}</span></div>
+      <div class="linea"><span class="lbl">SON GUARANIES${esCambio ? " (DEVUELTO)" : ""}:</span> <span class="val">${escapeHtml(numeroALetras(total))}</span></div>
       <div class="linea">
         <span class="lbl">LIQUIDACION DEL IVA</span>
         <span class="val">&nbsp;&nbsp;(5%): ${fmtGs(iva5Liq)}&nbsp;&nbsp;&nbsp;&nbsp;(10%): ${fmtGs(iva10Liq)}&nbsp;&nbsp;&nbsp;&nbsp;TOTAL IVA: ${fmtGs(ivaTotal)}</span>
       </div>
-      ${d.resolucion === "cambio" && (d.cambios?.length ?? 0) > 0 ? `<div class="linea">
-        <span class="lbl">PRODUCTOS ENTREGADOS:</span>
-        <span class="val">${(d.cambios ?? []).map((c) => `${c.cantidad}× ${escapeHtml(c.producto_nombre)} — ${fmtGs(c.total)}`).join("&nbsp;&nbsp;·&nbsp;&nbsp;")}</span>
-      </div>` : ""}
       <div class="total-final">${difTxt}: Gs. ${fmtGs(Math.abs(dif))}</div>
     </div>
 

@@ -46,6 +46,19 @@ function str(v: unknown): string | null {
   return v == null ? null : String(v);
 }
 /**
+ * IVA real del producto entregado como cambio -> etiqueta de venta (EXENTA|5%|10%).
+ * `productos.iva_tipo` puede venir como 'exenta'|'5'|'10' (schema base) o ya como
+ * '5%'|'10%'|'EXENTA'. Si la columna no existe o está vacía, cae a 10% (default del
+ * sistema, igual que /ventas/nueva), sin romper la devolución.
+ */
+function normalizeIvaProducto(raw: unknown): string {
+  const t = String(raw ?? "").trim().toLowerCase();
+  if (t === "exenta" || t === "exento" || t === "0" || t === "0%") return "EXENTA";
+  if (t === "5" || t === "5%" || t === "iva_5" || t === "iva5") return "5%";
+  if (t === "10" || t === "10%" || t === "iva_10" || t === "iva10") return "10%";
+  return "10%";
+}
+/**
  * Normaliza timestamps a ISO. node-postgres devuelve `Date`, y String(Date) da
  * "Thu Jul 16 2026 ... (hora estándar de Paraguay)", que Postgres NO parsea.
  */
@@ -312,8 +325,11 @@ export async function crearDevolucion(
     if (input.resolucion === "cambio") {
       for (const cb of input.cambios ?? []) {
         const pQ = await client.query(
-          `SELECT id::text, nombre, sku, precio_venta, costo_promedio, stock_actual, controla_stock
-             FROM ${tP} WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
+          // to_jsonb(p)->>'iva_tipo' lee el IVA real del producto sin romper si la
+          // columna no existe en el schema (devuelve NULL en vez de error).
+          `SELECT p.id::text, p.nombre, p.sku, p.precio_venta, p.costo_promedio,
+                  p.stock_actual, p.controla_stock, to_jsonb(p) ->> 'iva_tipo' AS iva_tipo
+             FROM ${tP} p WHERE p.id = $1::uuid AND p.empresa_id = $2::uuid FOR UPDATE`,
           [cb.producto_id, empresaId]
         );
         const p = pQ.rows[0];
@@ -329,8 +345,9 @@ export async function crearDevolucion(
           );
         }
         const precio = num(p.precio_venta);
+        const tipoIva = normalizeIvaProducto(p.iva_tipo);
         const total = round2(precio * cant);
-        const iva = round2(calcIvaIncluido("10%", total));
+        const iva = round2(calcIvaIncluido(tipoIva, total));
         totalEntregado = round2(totalEntregado + total);
         cambiosCalc.push({
           producto_id: String(p.id),
@@ -338,7 +355,7 @@ export async function crearDevolucion(
           sku: str(p.sku),
           cantidad: cant,
           precio_unitario: precio,
-          tipo_iva: "10%",
+          tipo_iva: tipoIva,
           monto_iva: iva,
           total,
           controla_stock: controla,
