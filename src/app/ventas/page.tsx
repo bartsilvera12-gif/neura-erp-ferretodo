@@ -124,6 +124,8 @@ export default function VentasPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [devolucionesOn, setDevolucionesOn] = useState(false);
   const [devolverVentaId, setDevolverVentaId] = useState<string | null>(null);
+  // Acceso a Devolución/Cambio desde Caja: selector de la venta original.
+  const [pickerDevolucion, setPickerDevolucion] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,12 +209,21 @@ export default function VentasPage() {
             <p className="mt-0.5 text-xs text-slate-500">Cobro, facturación y cierre de pedidos</p>
           </div>
           {devolucionesOn && (
-            <Link
-              href="/ventas/devoluciones"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-            >
-              Devoluciones
-            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPickerDevolucion(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#3F8E91] shadow-sm shadow-[#4FAEB2]/30"
+              >
+                Devolución / Cambio
+              </button>
+              <Link
+                href="/ventas/devoluciones"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+              >
+                Historial
+              </Link>
+            </div>
           )}
         </div>
       </div>
@@ -515,6 +526,14 @@ export default function VentasPage() {
 
       {detalle && <VentaDetalleModal venta={detalle} onClose={() => setDetalle(null)} />}
 
+      {devolucionesOn && pickerDevolucion && (
+        <DevolucionVentaPicker
+          ventas={todas}
+          onClose={() => setPickerDevolucion(false)}
+          onSelect={(id) => { setPickerDevolucion(false); setDevolverVentaId(id); }}
+        />
+      )}
+
       {devolucionesOn && devolverVentaId && (
         <DevolucionWizard
           ventaId={devolverVentaId}
@@ -741,6 +760,115 @@ function Fila({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between text-slate-600">
       <span>{label}</span>
       <span className="tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Selector de la venta original para iniciar una Devolución/Cambio desde Caja.
+ * Reutiliza la lista ya cargada (sin pedir otra vez al backend) y solo ofrece
+ * ventas devolvibles (no anuladas y no devueltas por completo). Al elegir una,
+ * abre el wizard de devolución existente con esa venta.
+ */
+function DevolucionVentaPicker({
+  ventas,
+  onClose,
+  onSelect,
+}: {
+  ventas: Venta[];
+  onClose: () => void;
+  onSelect: (ventaId: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const devolvibles = ventas.filter(
+    (v) => v.estado !== "anulada" && v.estado !== "devuelta_total"
+  );
+  const filtradas = devolvibles.filter((v) =>
+    q.trim() === ""
+      ? true
+      : productoMatchesQuery(
+          q,
+          v.numero_control,
+          v.cliente_nombre ?? "",
+          ...v.items.map((i) => i.producto_nombre),
+          ...v.items.map((i) => i.sku)
+        )
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Devolución / Cambio</h2>
+            <p className="text-sm text-slate-500">Buscá la venta original del producto a devolver o cambiar.</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Cerrar"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="px-6 pt-4">
+          <input
+            type="text"
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por número de venta, cliente, producto o SKU…"
+            className="h-11 w-full rounded-lg border-2 border-[#4FAEB2]/30 bg-white px-3 text-sm outline-none focus:border-[#4FAEB2]"
+          />
+        </div>
+
+        <div className="max-h-[55vh] overflow-y-auto px-6 py-4">
+          {filtradas.length === 0 ? (
+            <p className="py-10 text-center text-sm text-slate-400">
+              {devolvibles.length === 0
+                ? "No hay ventas disponibles para devolver."
+                : "Sin resultados para la búsqueda."}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {filtradas.slice(0, 50).map((v) => (
+                <li key={v.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(v.id)}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left transition-colors hover:border-[#4FAEB2] hover:bg-[#4FAEB2]/[0.06]"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-800">{v.numero_control}</span>
+                        {v.estado === "parcialmente_devuelta" && (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                            Parcialmente devuelta
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                        {formatFecha(v.fecha)}
+                        {v.cliente_nombre ? ` · ${v.cliente_nombre}` : ""}
+                        {v.items[0] ? ` · ${v.items[0].producto_nombre}` : ""}
+                        {v.items.length > 1 ? ` +${v.items.length - 1}` : ""}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold text-[#3F8E91]">{formatGs(v.total)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
