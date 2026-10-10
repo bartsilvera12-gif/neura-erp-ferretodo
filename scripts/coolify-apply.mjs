@@ -90,7 +90,8 @@ if (cmd === "list") {
     console.log(`    node scripts/coolify-apply.mjs redeploy ${uuid} apply`);
     process.exit(0);
   }
-  const dep = await call(`/deploy?uuid=${encodeURIComponent(uuid)}&force=false`);
+  // La API v1 de Coolify exige POST en /deploy (con GET devuelve 405).
+  const dep = await call(`/deploy?uuid=${encodeURIComponent(uuid)}&force=false`, { method: "POST" });
   console.log("DEPLOY status:", dep.status, "→", JSON.stringify(dep.json).slice(0, 300));
 } else {
   console.log("uso: list | getenv <uuid> | showdburl <uuid> | setdburl <uuid> [apply] | redeploy <uuid> [apply]");
