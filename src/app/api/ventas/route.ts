@@ -17,6 +17,8 @@ interface VentaRow {
   plazo_dias: number | null;
   fecha: string;
   usuario_nombre?: string | null;
+  vendedor_reasignado_at?: string | null;
+  vendedor_reasignado_por?: string | null;
   factura_id?: string | null;
   cliente_id?: string | null;
 }
@@ -66,7 +68,7 @@ export async function GET(request: NextRequest) {
     const ventasQ = await ctx.supabase
       .from("ventas")
       .select(
-        "id, empresa_id, numero_control, moneda, tipo_cambio, subtotal, monto_iva, total, tipo_venta, plazo_dias, metodo_pago, fecha, genera_nota_remision, nota_remision_numero, usuario_nombre, estado, anulada_at, anulada_motivo, factura_id, cliente_id"
+        "id, empresa_id, numero_control, moneda, tipo_cambio, subtotal, monto_iva, total, tipo_venta, plazo_dias, metodo_pago, fecha, genera_nota_remision, nota_remision_numero, usuario_nombre, vendedor_reasignado_at, vendedor_reasignado_por, estado, anulada_at, anulada_motivo, factura_id, cliente_id"
       )
       .eq("empresa_id", empresaId)
       .order("fecha", { ascending: false })
@@ -176,6 +178,8 @@ export async function GET(request: NextRequest) {
         nota_remision_numero: (r as unknown as { nota_remision_numero?: string | null }).nota_remision_numero ?? null,
         fecha: r.fecha,
         usuario_nombre: r.usuario_nombre ?? null,
+        vendedor_reasignado_at: r.vendedor_reasignado_at ?? null,
+        vendedor_reasignado_por: r.vendedor_reasignado_por ?? null,
         cliente_id: r.cliente_id ?? null,
         cliente_nombre: r.cliente_id ? clienteNombreById.get(r.cliente_id) ?? null : null,
         cliente_telefono: r.cliente_id ? clienteTelById.get(r.cliente_id) ?? null : null,

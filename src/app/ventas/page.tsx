@@ -6,6 +6,7 @@ import EdgeScrollArea from "@/components/ui/EdgeScrollArea";
 import { FancySelect } from "@/components/ui/FancySelect";
 import MobileFab from "@/components/ui/MobileFab";
 import { getVentas } from "@/lib/ventas/storage";
+import { apiFetch } from "@/lib/api/fetch-with-supabase-session";
 import PedidosPendientesCaja from "./PedidosPendientesCaja";
 import PedidosConsultaPendientes from "./PedidosConsultaPendientes";
 import CajaControlPanel from "@/components/caja/CajaControlPanel";
@@ -121,11 +122,23 @@ export default function VentasPage() {
   const [mostrarAnuladas, setMostrarAnuladas] = useState(true);
   const [detalle,    setDetalle]    = useState<Venta | null>(null);
   const [anularTarget, setAnularTarget] = useState<Venta | null>(null);
+  const [reasignarTarget, setReasignarTarget] = useState<Venta | null>(null);
+  const [esAdmin, setEsAdmin] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [devolucionesOn, setDevolucionesOn] = useState(false);
   const [devolverVentaId, setDevolverVentaId] = useState<string | null>(null);
   // Acceso a Devolución/Cambio desde Caja: selector de la venta original.
   const [pickerDevolucion, setPickerDevolucion] = useState(false);
+
+  // Solo los administradores ven la opción de cambiar el vendedor de una venta.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch("/api/me/rol", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled) setEsAdmin(j?.data?.isAdmin === true); })
+      .catch(() => { if (!cancelled) setEsAdmin(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -495,6 +508,16 @@ export default function VentasPage() {
                               Nota de remisión
                             </a>
                           )}
+                          {esAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => setReasignarTarget(v)}
+                              className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+                              title="Cambiar el vendedor (usuario) de esta venta"
+                            >
+                              Vendedor
+                            </button>
+                          )}
                           {!isAnulada && (
                             <button
                               type="button"
@@ -555,6 +578,136 @@ export default function VentasPage() {
           }}
         />
       )}
+      {reasignarTarget && (
+        <ReasignarVendedorModal
+          venta={reasignarTarget}
+          onClose={() => setReasignarTarget(null)}
+          onDone={() => {
+            setReasignarTarget(null);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Modal: reasignar el vendedor de una venta (solo Admin) ──────────────────────
+
+type UsuarioActivo = { id: string; nombre: string | null; email: string; rol: string | null };
+
+function ReasignarVendedorModal({
+  venta,
+  onClose,
+  onDone,
+}: {
+  venta: Venta;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [usuarios, setUsuarios] = useState<UsuarioActivo[]>([]);
+  const [usuarioId, setUsuarioId] = useState<string>("");
+  const [cargando, setCargando] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch("/api/usuarios/empresa-activos", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        setUsuarios(Array.isArray(j?.usuarios) ? (j.usuarios as UsuarioActivo[]) : []);
+      })
+      .catch(() => { if (!cancelled) setError("No se pudieron cargar los usuarios."); })
+      .finally(() => { if (!cancelled) setCargando(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const opciones = [
+    { value: "", label: "Elegí un usuario…" },
+    ...usuarios.map((u) => ({ value: u.id, label: u.nombre?.trim() || u.email || "Sin nombre" })),
+  ];
+
+  async function submit() {
+    if (!usuarioId) { setError("Elegí un usuario."); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/ventas/${venta.id}/vendedor`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario_id: usuarioId }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        throw new Error(json.error ?? `Error ${res.status}`);
+      }
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cambiar el vendedor.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl border-2 border-[#4FAEB2]/20 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/10 to-transparent px-5 py-4">
+          <h3 className="text-base font-bold text-slate-800">Cambiar vendedor · {venta.numero_control}</h3>
+          <p className="mt-1 text-xs text-slate-600">
+            Vendedor actual: <span className="font-medium">{venta.usuario_nombre ?? "—"}</span>.
+            Elegí a quién corresponde esta venta. Solo cambia a quién se le atribuye;
+            no afecta stock, caja ni factura.
+          </p>
+        </div>
+        <div className="p-5 space-y-3">
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Nuevo vendedor</span>
+            <div className="mt-1">
+              <FancySelect
+                value={usuarioId}
+                onChange={(v) => setUsuarioId(v)}
+                ariaLabel="Elegir nuevo vendedor"
+                className="w-full"
+                options={opciones}
+                disabled={cargando || loading}
+              />
+            </div>
+            {cargando && <span className="mt-1 block text-xs text-slate-400">Cargando usuarios…</span>}
+          </label>
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={loading || cargando || !usuarioId}
+              className="rounded-lg bg-[#0EA5E9] px-4 py-2 text-sm font-bold text-white hover:bg-[#0284C7] disabled:opacity-50"
+            >
+              {loading ? "Guardando..." : "Cambiar vendedor"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

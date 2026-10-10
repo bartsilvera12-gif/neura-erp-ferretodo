@@ -62,6 +62,11 @@ export interface Venta {
   /** Nombre del usuario que registró la venta (auditoría). */
   usuario_nombre?: string | null;
 
+  /** Fecha en que un admin reasignó el vendedor de la venta (si ocurrió). */
+  vendedor_reasignado_at?: string | null;
+  /** Nombre del admin que reasignó el vendedor (si ocurrió). */
+  vendedor_reasignado_por?: string | null;
+
   /** Cliente asociado a la venta (opcional; una venta puede no tener cliente). */
   cliente_id?: string | null;
   /** Nombre del cliente (razón social / contacto) para mostrar y filtrar en el listado. */
