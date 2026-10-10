@@ -6,9 +6,9 @@
 -- usuario pero correspondía a otro. Se agregan columnas de auditoría para dejar
 -- rastro de quién hizo el cambio y cuándo.
 --
--- Single-schema (ferreteriarepublica). Aditiva e idempotente.
+-- Schema del tenant de este repo: ferretodo. Aditiva e idempotente.
 -- =============================================================================
 
-ALTER TABLE ferreteriarepublica.ventas
+ALTER TABLE ferretodo.ventas
   ADD COLUMN IF NOT EXISTS vendedor_reasignado_at  timestamptz,
   ADD COLUMN IF NOT EXISTS vendedor_reasignado_por text;
