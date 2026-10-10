@@ -657,10 +657,10 @@ function ReasignarVendedorModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-2xl border-2 border-[#4FAEB2]/20 bg-white shadow-2xl"
+        className="w-full max-w-md rounded-2xl border-2 border-[#4FAEB2]/20 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/10 to-transparent px-5 py-4">
+        <div className="rounded-t-2xl border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/10 to-transparent px-5 py-4">
           <h3 className="text-base font-bold text-slate-800">Cambiar vendedor · {venta.numero_control}</h3>
           <p className="mt-1 text-xs text-slate-600">
             Vendedor actual: <span className="font-medium">{venta.usuario_nombre ?? "—"}</span>.
