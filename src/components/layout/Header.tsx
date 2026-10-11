@@ -8,6 +8,7 @@ import { signOut } from "@/lib/auth";
 import { useBoot } from "@/components/BootContext";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
 import CambiarPasswordModal from "@/components/layout/CambiarPasswordModal";
+import { esRolAdminEmpresaOGlobal } from "@/lib/auth/rol-empresa";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -82,6 +83,9 @@ export default function Header() {
   const displayName = nombreReal || fallbackEmail || "Usuario";
   const dropdownName = nombreReal || "Usuario";
   const displayRole = roleLabel(usuario?.rol);
+  // Solo el usuario administrador puede cambiar la contraseña desde el sistema.
+  // Los usuarios normales (Lucas, Alex, Local, etc.) no ven esta opción.
+  const puedeCambiarPassword = esRolAdminEmpresaOGlobal(usuario?.rol);
 
   return (
     <header
@@ -150,24 +154,28 @@ export default function Header() {
                   <p className="truncate text-xs text-slate-500">{fallbackEmail}</p>
                 ) : null}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setUserMenuOpen(false);
-                  setPwOpen(true);
-                }}
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
-              >
-                <KeyRound className="h-4 w-4" />
-                Cambiar contraseña
-              </button>
+              {puedeCambiarPassword ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setPwOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  Cambiar contraseña
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={async () => {
                   await signOut();
                   router.push("/login");
                 }}
-                className="flex w-full items-center gap-2 border-t border-slate-100 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#3F8E91] ${
+                  puedeCambiarPassword ? "border-t border-slate-100" : ""
+                }`}
               >
                 <LogOut className="h-4 w-4" />
                 Cerrar sesión
