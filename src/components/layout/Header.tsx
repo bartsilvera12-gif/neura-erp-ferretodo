@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Menu } from "lucide-react";
+import { ChevronDown, LogOut, Menu, KeyRound } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { signOut } from "@/lib/auth";
 import { useBoot } from "@/components/BootContext";
 import NotificacionesBell from "@/components/layout/NotificacionesBell";
+import CambiarPasswordModal from "@/components/layout/CambiarPasswordModal";
 
 type HeaderUsuario = {
   nombre: string | null;
@@ -43,6 +44,7 @@ function roleLabel(rol: string | null | undefined): string {
 export default function Header() {
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
   const [usuario, setUsuario] = useState<HeaderUsuario | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const { mobileSidebarOpen, setMobileSidebarOpen } = useBoot();
@@ -150,11 +152,22 @@ export default function Header() {
               </div>
               <button
                 type="button"
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  setPwOpen(true);
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
+              >
+                <KeyRound className="h-4 w-4" />
+                Cambiar contraseña
+              </button>
+              <button
+                type="button"
                 onClick={async () => {
                   await signOut();
                   router.push("/login");
                 }}
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
+                className="flex w-full items-center gap-2 border-t border-slate-100 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-[#3F8E91]"
               >
                 <LogOut className="h-4 w-4" />
                 Cerrar sesión
@@ -163,6 +176,13 @@ export default function Header() {
           ) : null}
         </div>
       </div>
+
+      {pwOpen ? (
+        <CambiarPasswordModal
+          email={fallbackEmail || null}
+          onClose={() => setPwOpen(false)}
+        />
+      ) : null}
     </header>
   );
 }

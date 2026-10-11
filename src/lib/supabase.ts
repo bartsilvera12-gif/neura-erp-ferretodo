@@ -20,3 +20,19 @@ export function createBrowserClientForSchema(schema: string) {
     db: { schema },
   });
 }
+
+/**
+ * Cliente efímero (en memoria) SOLO para verificar credenciales sin tocar la
+ * sesión activa del usuario. `persistSession:false` + storageKey propio evitan
+ * sobrescribir la sesión real guardada por `supabase`.
+ */
+export function createIsolatedAuthClient() {
+  return createBrowserClient(supabaseUrl, supabaseKey, {
+    ...supabaseDbSchemaOption,
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      storageKey: "sb-verify-ephemeral",
+    },
+  });
+}

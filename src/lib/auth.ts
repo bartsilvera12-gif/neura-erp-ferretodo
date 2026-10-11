@@ -3,7 +3,7 @@ import { serializeUnknownError } from "@/lib/errors/serialize-unknown-error";
 import { clearBrowserEmpresaDataSchemaCache } from "@/lib/supabase/browser-data-client";
 import { usuarioEmailLookupVariants } from "@/lib/auth/usuario-email-variants";
 import { clearModuleAccessCache } from "@/lib/modulos/module-access-cache";
-import { supabase } from "./supabase";
+import { supabase, createIsolatedAuthClient } from "./supabase";
 
 /** Fila mínima de zentra_erp.usuarios usada en el cliente. */
 export type CurrentUsuario = {
@@ -37,6 +37,25 @@ export async function signOut() {
 export async function getSession() {
   const { data } = await supabase.auth.getSession();
   return data.session;
+}
+
+/**
+ * Verifica que `password` sea la contraseña ACTUAL del usuario, sin alterar la
+ * sesión activa (usa un cliente efímero en memoria). Devuelve true si es correcta.
+ */
+export async function verifyCurrentPassword(email: string, password: string): Promise<boolean> {
+  const tmp = createIsolatedAuthClient();
+  const { error } = await tmp.auth.signInWithPassword({ email, password });
+  try { await tmp.auth.signOut({ scope: "local" }); } catch { /* best-effort */ }
+  return !error;
+}
+
+/**
+ * Cambia la contraseña del usuario actualmente logueado (self-service).
+ * Usa la sesión vigente; no requiere service role.
+ */
+export async function updatePassword(newPassword: string) {
+  return supabase.auth.updateUser({ password: newPassword });
 }
 
 export async function createUser(email: string, password: string) {
