@@ -126,7 +126,7 @@ export default function EditarOrdenCompraPage() {
     const query = q.trim();
     if (query.length < 2) return [];
     return productos
-      .filter((p) => !excluidos.has(String(p.id)) && productoMatchesQuery(query, p.nombre, p.sku))
+      .filter((p) => !excluidos.has(String(p.id)) && productoMatchesQuery(query, p.nombre, p.sku, p.codigo_barras))
       .slice(0, 20);
   }, [productos, excluidos, q]);
 

@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
         })
         .eq("empresa_id", ctx.auth.empresa_id)
         .eq("activo", true);
-      if (q) base = applyTokenSearch(base, q, ["nombre", "sku"]);
+      if (q) base = applyTokenSearch(base, q, ["nombre", "sku", "codigo_barras"]);
       if (categoria === "__sin__") base = base.is("categoria_principal_id", null);
       else if (categoria) base = base.eq("categoria_principal_id", categoria);
       return base.order("nombre");

@@ -818,7 +818,7 @@ function ProductoBuscador({
     const q = query.trim();
     const base = productos.filter((p) => !excluidos.has(p.id));
     const filt = q
-      ? base.filter((p) => productoMatchesQuery(q, p.nombre, p.sku))
+      ? base.filter((p) => productoMatchesQuery(q, p.nombre, p.sku, p.codigo_barras))
       : base;
     return filt.slice(0, 50);
   }, [productos, excluidos, query]);
