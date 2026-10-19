@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Download, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Download, ChevronDown, ChevronUp, X } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { RegistrarCobroModalCxc, type CxcRef } from "@/components/cobros/RegistrarCobroModalCxc";
 
 type Mov = {
   id: string;
+  venta_id: string | null;
   numero_venta: string | null;
   fecha_emision: string | null;
   fecha_vencimiento: string | null;
@@ -17,6 +18,7 @@ type Mov = {
   vencida: boolean;
 };
 type Resumen = { total_vendido: number; saldo_pendiente: number; total_cobrado: number; vencido: number };
+type DetalleItem = { producto_nombre: string; sku: string | null; cantidad: number; precio_venta: number; tipo_iva: string; total_linea: number };
 
 const ESTADO_BADGE: Record<string, string> = {
   pendiente: "bg-amber-100 text-amber-700",
@@ -61,6 +63,31 @@ export function EstadoCuentaClienteBlock({
   const [abierto, setAbierto] = useState(true);
   const [cobrando, setCobrando] = useState<CxcRef | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Detalle de una venta (qué llevó) al tocar el código de la venta.
+  const [detalle, setDetalle] = useState<{ ventaId: string; numero: string } | null>(null);
+  const [detalleItems, setDetalleItems] = useState<DetalleItem[]>([]);
+  const [detalleLoad, setDetalleLoad] = useState(false);
+  const [detalleErr, setDetalleErr] = useState<string | null>(null);
+
+  async function verDetalleVenta(ventaId: string, numero: string) {
+    setDetalle({ ventaId, numero });
+    setDetalleItems([]);
+    setDetalleErr(null);
+    setDetalleLoad(true);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/ventas/${ventaId}/items`, { cache: "no-store" });
+      const body = await res.json();
+      if (!res.ok || body?.success === false) {
+        setDetalleErr(body?.error ?? "No se pudo cargar el detalle.");
+        return;
+      }
+      setDetalleItems((body.data?.items ?? []) as DetalleItem[]);
+    } catch {
+      setDetalleErr("Error de red.");
+    } finally {
+      setDetalleLoad(false);
+    }
+  }
 
   const cargar = useCallback(async () => {
     if (!clienteId) return;
@@ -182,7 +209,20 @@ export function EstadoCuentaClienteBlock({
                         <td className="py-2.5 px-3 sm:px-4">
                           <span className="inline-flex items-center gap-1.5 text-xs text-slate-600"><span className="h-1.5 w-1.5 rounded-full bg-[#4FAEB2]" /> Crédito</span>
                         </td>
-                        <td className="py-2.5 px-3 font-mono font-medium text-gray-800">{x.numero_venta ?? "—"}</td>
+                        <td className="py-2.5 px-3 font-mono font-medium text-gray-800">
+                          {x.venta_id ? (
+                            <button
+                              type="button"
+                              onClick={() => void verDetalleVenta(x.venta_id as string, x.numero_venta ?? "")}
+                              className="text-[#0EA5E9] hover:text-[#0284C7] hover:underline"
+                              title="Ver qué llevó en esta venta"
+                            >
+                              {x.numero_venta ?? "Ver detalle"}
+                            </button>
+                          ) : (
+                            x.numero_venta ?? "—"
+                          )}
+                        </td>
                         <td className="py-2.5 px-3 text-gray-600">{fmtFecha(x.fecha_emision)}</td>
                         <td className={`py-2.5 px-3 ${x.vencida ? "font-semibold text-red-600" : "text-gray-600"}`}>{fmtFecha(x.fecha_vencimiento)}</td>
                         <td className="py-2.5 px-3 text-right tabular-nums">{fmtGs(x.total)}</td>
@@ -231,6 +271,55 @@ export function EstadoCuentaClienteBlock({
             </div>
           )}
         </>
+      )}
+
+      {detalle && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setDetalle(null)}>
+          <div className="flex w-full max-w-lg max-h-[85vh] flex-col overflow-hidden rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-slate-800">Detalle de la venta {detalle.numero}</h3>
+              <button type="button" onClick={() => setDetalle(null)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {detalleLoad ? (
+                <div className="flex items-center gap-2 py-6 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
+              ) : detalleErr ? (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{detalleErr}</div>
+              ) : detalleItems.length === 0 ? (
+                <div className="py-6 text-center text-sm text-gray-500">Esta venta no tiene ítems.</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-gray-500">
+                    <tr>
+                      <th className="px-2 py-2 text-center">Cant.</th>
+                      <th className="px-2 py-2 text-left">Producto</th>
+                      <th className="px-2 py-2 text-right">P. Unit.</th>
+                      <th className="px-2 py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {detalleItems.map((it, i) => (
+                      <tr key={i}>
+                        <td className="px-2 py-1.5 text-center tabular-nums">{it.cantidad}</td>
+                        <td className="px-2 py-1.5">{it.producto_nombre}{it.sku ? <span className="ml-1 text-[10px] text-slate-400">{it.sku}</span> : null}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtGs(it.precio_venta)}</td>
+                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">{fmtGs(it.total_linea)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-200">
+                      <td colSpan={3} className="px-2 py-2 text-right font-semibold">Total</td>
+                      <td className="px-2 py-2 text-right font-bold tabular-nums">{fmtGs(detalleItems.reduce((a, it) => a + it.total_linea, 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       <RegistrarCobroModalCxc
