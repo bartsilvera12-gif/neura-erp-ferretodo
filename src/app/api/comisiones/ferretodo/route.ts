@@ -56,17 +56,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(successResponse({ por_vendedor: [], periodo: { desde, hasta }, escalas: ESCALAS }));
     }
 
-    // 2) Movimientos SALIDA (costo real snapshot) para esas ventas
-    const { data: movs, error: eM } = await ctx.supabase
-      .from("movimientos_inventario")
-      .select("venta_id, cantidad, costo_unitario, tipo, anulado_at")
-      .eq("empresa_id", empresaId)
-      .eq("tipo", "SALIDA")
-      .in("venta_id", ventaIds);
-    if (eM) throw new Error(eM.message);
+    // 2) Movimientos SALIDA (costo real snapshot) para esas ventas.
+    //    Se consulta EN LOTES: con muchas ventas, un solo .in(...) arma una URL
+    //    gigante y PostgREST responde "URI too long" (414).
+    const movs: Array<Record<string, unknown>> = [];
+    const CHUNK = 80;
+    for (let i = 0; i < ventaIds.length; i += CHUNK) {
+      const chunk = ventaIds.slice(i, i + CHUNK);
+      const { data, error: eM } = await ctx.supabase
+        .from("movimientos_inventario")
+        .select("venta_id, cantidad, costo_unitario, tipo, anulado_at")
+        .eq("empresa_id", empresaId)
+        .eq("tipo", "SALIDA")
+        .in("venta_id", chunk);
+      if (eM) throw new Error(eM.message);
+      if (data) movs.push(...(data as Array<Record<string, unknown>>));
+    }
 
     const costoPorVenta = new Map<string, number>();
-    for (const m of movs ?? []) {
+    for (const m of movs) {
       if (m.anulado_at) continue;
       const vid = String(m.venta_id ?? "");
       if (!vid) continue;
