@@ -68,6 +68,36 @@ export function EstadoCuentaClienteBlock({
   const [detalleItems, setDetalleItems] = useState<DetalleItem[]>([]);
   const [detalleLoad, setDetalleLoad] = useState(false);
   const [detalleErr, setDetalleErr] = useState<string | null>(null);
+  // Edición inline de la fecha de vencimiento de un crédito.
+  const [editVenc, setEditVenc] = useState<{ id: string; value: string } | null>(null);
+  const [savingVenc, setSavingVenc] = useState(false);
+
+  async function guardarVencimiento() {
+    if (!editVenc) return;
+    setSavingVenc(true);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/cobros/cuentas/${editVenc.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fecha_vencimiento: editVenc.value || null }),
+      });
+      const body = await res.json();
+      if (!res.ok || body?.success === false) {
+        setToast(`Error: ${body?.error ?? "no se pudo actualizar"}`);
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      setEditVenc(null);
+      setToast("Vencimiento actualizado");
+      setTimeout(() => setToast(null), 2500);
+      await cargar();
+    } catch {
+      setToast("Error de red.");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setSavingVenc(false);
+    }
+  }
 
   async function verDetalleVenta(ventaId: string, numero: string) {
     setDetalle({ ventaId, numero });
@@ -224,7 +254,36 @@ export function EstadoCuentaClienteBlock({
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-gray-600">{fmtFecha(x.fecha_emision)}</td>
-                        <td className={`py-2.5 px-3 ${x.vencida ? "font-semibold text-red-600" : "text-gray-600"}`}>{fmtFecha(x.fecha_vencimiento)}</td>
+                        <td className={`py-2.5 px-3 ${x.vencida ? "font-semibold text-red-600" : "text-gray-600"}`}>
+                          {editVenc?.id === x.id ? (
+                            <span className="inline-flex items-center gap-1">
+                              <input
+                                type="date"
+                                value={editVenc.value}
+                                onChange={(e) => setEditVenc({ id: x.id, value: e.target.value })}
+                                className="rounded-md border border-slate-300 px-1.5 py-1 text-xs"
+                              />
+                              <button type="button" disabled={savingVenc} onClick={() => void guardarVencimiento()} className="rounded-md bg-[#4FAEB2] px-2 py-1 text-[11px] font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">
+                                {savingVenc ? "…" : "Guardar"}
+                              </button>
+                              <button type="button" onClick={() => setEditVenc(null)} className="text-[11px] text-slate-400 hover:text-slate-600">Cancelar</button>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5">
+                              {fmtFecha(x.fecha_vencimiento)}
+                              {x.estado !== "anulado" && x.estado !== "pagado" && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditVenc({ id: x.id, value: x.fecha_vencimiento ? String(x.fecha_vencimiento).slice(0, 10) : "" })}
+                                  className="text-[11px] text-[#0EA5E9] hover:underline"
+                                  title="Cambiar la fecha de vencimiento"
+                                >
+                                  editar
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </td>
                         <td className="py-2.5 px-3 text-right tabular-nums">{fmtGs(x.total)}</td>
                         <td className="py-2.5 px-3 text-right tabular-nums text-emerald-700">{fmtGs(x.cobrado)}</td>
                         <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-amber-600">{fmtGs(x.saldo)}</td>
