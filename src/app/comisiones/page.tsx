@@ -9,8 +9,8 @@
  *   - 20M a 35M    → 5% de la ganancia total
  *   - ≥ 35M        → 7% de la ganancia total
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw, ChevronRight, ChevronDown } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 
 type Fila = {
@@ -26,7 +26,9 @@ type Fila = {
   observacion: string | null;
   personalizado: boolean;
   comision: number;
+  detalle?: DetVenta[];
 };
+type DetVenta = { venta_id: string; numero: string; fecha: string | null; vendido: number; costo: number; ganancia: number };
 
 type Escala = { desde: number; hasta: number | null; porcentaje: number };
 
@@ -91,6 +93,8 @@ export default function ComisionesPage() {
     tipo: "porcentaje", valor: "5", estado: "retenida",
   });
   const [guardando, setGuardando] = useState(false);
+  // Desglose venta por venta (qué ventas componen la comisión de cada vendedor).
+  const [expandido, setExpandido] = useState<string | null>(null);
 
   function abrirEdicion(f: Fila) {
     setEditando(f.vendedor);
@@ -199,8 +203,19 @@ export default function ComisionesPage() {
               <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-400">{cargando ? "Calculando…" : "Sin ventas en el período."}</td></tr>
             ) : (
               filas.map((f) => (
-                <tr key={f.vendedor} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-3 font-medium text-slate-800">{f.vendedor}</td>
+                <Fragment key={f.vendedor}>
+                <tr className="hover:bg-slate-50/50">
+                  <td className="px-4 py-3 font-medium text-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setExpandido((v) => (v === f.vendedor ? null : f.vendedor))}
+                      className="inline-flex items-center gap-1.5 text-left hover:text-[#2F6E71]"
+                      title="Ver el detalle venta por venta"
+                    >
+                      {expandido === f.vendedor ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                      {f.vendedor}
+                    </button>
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700">{f.ventas}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700">{fmtGs(f.ingresos)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-500">{fmtGs(f.costo)}</td>
@@ -249,6 +264,48 @@ export default function ComisionesPage() {
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums font-bold text-slate-900">{fmtGs(f.comision)}</td>
                 </tr>
+                {expandido === f.vendedor && (
+                  <tr>
+                    <td colSpan={8} className="bg-slate-50/70 px-4 py-3">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Detalle venta por venta — {f.vendedor} ({f.detalle?.length ?? 0} ventas)
+                      </p>
+                      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                        <table className="w-full min-w-[560px] text-xs">
+                          <thead className="bg-slate-50 text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold">Venta</th>
+                              <th className="px-3 py-2 text-left font-semibold">Fecha</th>
+                              <th className="px-3 py-2 text-right font-semibold">Vendido</th>
+                              <th className="px-3 py-2 text-right font-semibold">Costo</th>
+                              <th className="px-3 py-2 text-right font-semibold">Ganancia</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {(f.detalle ?? []).map((d) => (
+                              <tr key={d.venta_id}>
+                                <td className="px-3 py-1.5 font-mono text-slate-700">{d.numero || "—"}</td>
+                                <td className="px-3 py-1.5 text-slate-500">{d.fecha ? new Date(d.fecha).toLocaleDateString("es-PY") : "—"}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{fmtGs(d.vendido)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtGs(d.costo)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-emerald-700">{fmtGs(d.ganancia)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t-2 border-slate-200 bg-slate-50/80">
+                              <td className="px-3 py-2 font-semibold text-slate-600" colSpan={2}>Totales</td>
+                              <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtGs(f.ingresos)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtGs(f.costo)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums font-bold text-emerald-700">{fmtGs(f.ganancia)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))
             )}
           </tbody>

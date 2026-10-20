@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     // 1) Ventas del periodo (activas)
     const { data: ventasRaw, error: eV } = await ctx.supabase
       .from("ventas")
-      .select("id, total, fecha, estado, usuario_nombre, created_by")
+      .select("id, numero_control, total, fecha, estado, usuario_nombre, created_by")
       .eq("empresa_id", empresaId)
       .gte("fecha", desde)
       .lte("fecha", hastaTs);
@@ -74,8 +74,9 @@ export async function GET(request: NextRequest) {
       costoPorVenta.set(vid, (costoPorVenta.get(vid) ?? 0) + c);
     }
 
-    // 3) Agrupar por vendedor (usuario_nombre)
-    type Agg = { vendedor: string; ventas: number; ingresos: number; costo: number; ganancia: number };
+    // 3) Agrupar por vendedor (usuario_nombre) + detalle venta por venta.
+    type DetVenta = { venta_id: string; numero: string; fecha: string | null; vendido: number; costo: number; ganancia: number };
+    type Agg = { vendedor: string; ventas: number; ingresos: number; costo: number; ganancia: number; detalle: DetVenta[] };
     const porVendedor = new Map<string, Agg>();
     for (const v of ventas) {
       const nombre = (v.usuario_nombre?.trim() as string) || "Sin vendedor";
@@ -83,11 +84,19 @@ export async function GET(request: NextRequest) {
       const costo = costoPorVenta.get(String(v.id)) ?? 0;
       const ganancia = ingresos - costo;
       let a = porVendedor.get(nombre);
-      if (!a) { a = { vendedor: nombre, ventas: 0, ingresos: 0, costo: 0, ganancia: 0 }; porVendedor.set(nombre, a); }
+      if (!a) { a = { vendedor: nombre, ventas: 0, ingresos: 0, costo: 0, ganancia: 0, detalle: [] }; porVendedor.set(nombre, a); }
       a.ventas += 1;
       a.ingresos += ingresos;
       a.costo += costo;
       a.ganancia += ganancia;
+      a.detalle.push({
+        venta_id: String(v.id),
+        numero: String((v as Record<string, unknown>).numero_control ?? ""),
+        fecha: (v.fecha as string | null) ?? null,
+        vendido: Math.round(ingresos),
+        costo: Math.round(costo),
+        ganancia: Math.round(ganancia),
+      });
     }
 
     // 4) Overrides por vendedor/mes: otro %, monto fijo, y estado de pago.
@@ -135,6 +144,7 @@ export async function GET(request: NextRequest) {
           observacion: ov?.observacion ?? null,
           personalizado: !!ov,
           comision,
+          detalle: a.detalle.slice().sort((x, y) => String(y.fecha ?? "").localeCompare(String(x.fecha ?? ""))),
         };
       })
       .sort((a, b) => b.ganancia - a.ganancia);
