@@ -159,7 +159,7 @@ export async function getExtractoCliente(
   const cobrosQ = await pool().query(
     `SELECT id, fecha_pago, numero_venta, monto, metodo_pago, referencia
        FROM ${tCob}
-      WHERE empresa_id = $1::uuid AND cliente_id = $2::uuid
+      WHERE empresa_id = $1::uuid AND cliente_id = $2::uuid AND anulado_at IS NULL
       ORDER BY fecha_pago ASC, created_at ASC`,
     [empresaId, clienteId]
   ).catch(async () => {

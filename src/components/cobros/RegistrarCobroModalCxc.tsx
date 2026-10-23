@@ -24,6 +24,15 @@ const METODO_LABEL: Record<string, string> = {
 function fmtGs(n: number, moneda = "PYG") {
   return (moneda === "USD" ? "USD " : "Gs. ") + Math.round(Number(n) || 0).toLocaleString("es-PY");
 }
+/** Monto tecleado -> número. Tolera separadores de miles ("250.000" = 250000). */
+function parseMonto(s: string): number {
+  const soloDigitos = String(s).replace(/[^\d]/g, "");
+  return soloDigitos ? Number(soloDigitos) : 0;
+}
+/** Número -> texto con separadores de miles para el campo de monto. */
+function fmtMonto(n: number): string {
+  return n > 0 ? Math.round(n).toLocaleString("es-PY") : "";
+}
 
 /**
  * Modal reutilizable para registrar un cobro contra una cuenta por cobrar (CxC).
@@ -51,9 +60,10 @@ export function RegistrarCobroModalCxc({
   // Tras un cobro exitoso, se ofrece generar el recibo (paso opcional).
   const [cobroOk, setCobroOk] = useState<{ cobroId: string; monto: number } | null>(null);
 
+  const cuentaId = cuenta?.id ?? null;
   useEffect(() => {
-    if (open && cuenta) {
-      setMonto(String(cuenta.saldo));
+    if (open && cuentaId) {
+      setMonto("");
       setMetodo("efectivo");
       setReferencia("");
       setTitular("");
@@ -61,7 +71,7 @@ export function RegistrarCobroModalCxc({
       setError(null);
       setCobroOk(null);
     }
-  }, [open, cuenta]);
+  }, [open, cuentaId]);
 
   // Entidades bancarias (mismo origen que Caja) para Transferencia/Tarjeta.
   useEffect(() => {
@@ -74,6 +84,10 @@ export function RegistrarCobroModalCxc({
 
   if (!open || !cuenta) return null;
 
+  const montoIngresado = parseMonto(monto);
+  const saldoResultante = Math.max(0, cuenta.saldo - montoIngresado);
+  const cancelaCuenta = montoIngresado > 0 && saldoResultante <= 0.001;
+
   const pideBanco = metodo === "transferencia" || metodo === "tarjeta";
   // Para transferencia: banco/billetera. Para tarjeta: procesadora/tarjeta/banco.
   const entidadesFiltradas = entidades.filter((e) => {
@@ -84,8 +98,8 @@ export function RegistrarCobroModalCxc({
 
   async function registrar() {
     if (!cuenta || guardando) return;
-    const m = Number(monto);
-    if (!(m > 0)) { setError("El monto debe ser mayor a cero."); return; }
+    const m = parseMonto(monto);
+    if (!(m > 0)) { setError("Ingresá el monto a cobrar."); return; }
     if (m > cuenta.saldo + 0.001) { setError("El monto supera el saldo pendiente."); return; }
     if (pideBanco && !entidadId) { setError("Seleccioná la entidad bancaria."); return; }
     if (pideBanco && !referencia.trim()) { setError("Ingresá la referencia / nº de operación."); return; }
@@ -161,8 +175,28 @@ export function RegistrarCobroModalCxc({
               {error && <div className="rounded-md bg-red-50 border border-red-200 p-2.5 text-sm text-red-700">{error}</div>}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Monto a cobrar</label>
-                <input type="number" min="0" step="1" value={monto} onChange={(e) => setMonto(e.target.value)} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm" />
-                <button type="button" onClick={() => setMonto(String(cuenta.saldo))} className="mt-1 text-xs text-[#4FAEB2] hover:underline">Cobrar saldo total</button>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={monto}
+                  onChange={(e) => setMonto(fmtMonto(parseMonto(e.target.value)))}
+                  placeholder="0"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm tabular-nums"
+                />
+                <button type="button" onClick={() => setMonto(fmtMonto(cuenta.saldo))} className="mt-1 text-xs text-[#4FAEB2] hover:underline">Cobrar saldo total</button>
+                {/* Qué deja este pago: evita cancelar una cuenta sin querer. */}
+                {montoIngresado > 0 && (
+                  cancelaCuenta ? (
+                    <p className="mt-1.5 rounded-md bg-emerald-50 px-2 py-1.5 text-[11px] font-medium text-emerald-700">
+                      Cancela la cuenta: queda en Gs. 0 (pagada).
+                    </p>
+                  ) : (
+                    <p className="mt-1.5 rounded-md bg-sky-50 px-2 py-1.5 text-[11px] font-medium text-sky-700">
+                      Pago parcial: la cuenta queda con saldo {fmtGs(saldoResultante, cuenta.moneda)} pendiente.
+                    </p>
+                  )
+                )}
                 <p className="mt-1 text-[11px] text-slate-500">Si cobrás menos que el saldo, la cuenta sigue pendiente con la diferencia.</p>
               </div>
               <div>

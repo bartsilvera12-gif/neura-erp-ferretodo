@@ -19,7 +19,16 @@ type Mov = {
   estado: string;
   vencida: boolean;
 };
-type Cobro = { id: string; fecha_pago: string; monto: number; metodo_pago: string; referencia: string | null };
+type Cobro = {
+  id: string;
+  fecha_pago: string;
+  monto: number;
+  metodo_pago: string;
+  referencia: string | null;
+  /** Cobro anulado: se conserva en el historial pero no afecta el saldo. */
+  anulado_at?: string | null;
+  anulado_motivo?: string | null;
+};
 type Cliente = { id: string; nombre: string; ruc: string | null; telefono: string | null; direccion: string | null };
 type Resumen = { total_vendido: number; saldo_pendiente: number; total_cobrado: number; vencido: number };
 
@@ -215,14 +224,24 @@ export default function EstadoCuentaPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {cobros.map((c) => (
-                  <tr key={c.id}>
+                  <tr key={c.id} className={c.anulado_at ? "bg-slate-50/70" : ""}>
                     <td className="py-2.5 px-4 text-gray-600">{fmtFecha(c.fecha_pago)}</td>
                     <td className="py-2.5 px-4 text-gray-700 capitalize">{c.metodo_pago}</td>
                     <td className="py-2.5 px-4 text-gray-500">{c.referencia ?? "—"}</td>
-                    <td className="py-2.5 px-4 text-right tabular-nums font-semibold text-emerald-700">{fmtGs(c.monto)}</td>
+                    <td className="py-2.5 px-4 text-right tabular-nums font-semibold">
+                      {c.anulado_at ? (
+                        <>
+                          <span className="line-through text-slate-400">{fmtGs(c.monto)}</span>
+                          <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">Anulado</span>
+                          {c.anulado_motivo && <p className="mt-0.5 text-[10px] font-normal text-slate-400">{c.anulado_motivo}</p>}
+                        </>
+                      ) : (
+                        <span className="text-emerald-700">{fmtGs(c.monto)}</span>
+                      )}
+                    </td>
                     <td className="py-2.5 px-4 text-right">
                       <button
-                        disabled={reciboBusy === c.id}
+                        disabled={reciboBusy === c.id || !!c.anulado_at}
                         onClick={async () => {
                           if (reciboBusy) return;
                           setReciboBusy(c.id);

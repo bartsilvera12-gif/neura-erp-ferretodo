@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
         .from("cobros_clientes")
         .select("cuenta_por_cobrar_id, fecha_pago")
         .eq("empresa_id", empresaId)
+        .is("anulado_at", null)
         .in("cuenta_por_cobrar_id", chunk);
       if (eCob) throw new Error(eCob.message);
       for (const row of (cobros ?? []) as Array<{ cuenta_por_cobrar_id: string; fecha_pago: string | null }>) {

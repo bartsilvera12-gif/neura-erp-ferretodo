@@ -131,13 +131,14 @@ export async function crearOReusarRecibo(
     if (!cobroId) throw new ReciboError("Falta cobro_cliente_id.");
     const cq = await sb
       .from("cobros_clientes")
-      .select("id, cliente_id, cuenta_por_cobrar_id, venta_id, monto, metodo_pago, referencia, entidad_bancaria_id")
+      .select("id, cliente_id, cuenta_por_cobrar_id, venta_id, monto, metodo_pago, referencia, entidad_bancaria_id, anulado_at")
       .eq("empresa_id", empresaId)
       .eq("id", cobroId)
       .maybeSingle();
     if (cq.error) throw new ReciboError(cq.error.message, 500);
     if (!cq.data) throw new ReciboError("Cobro no encontrado.", 404);
     const cob = cq.data as unknown as Record<string, unknown>;
+    if (cob.anulado_at) throw new ReciboError("El cobro está anulado; no se puede emitir su recibo.", 409);
 
     const ex = await sb
       .from("recibos_dinero")

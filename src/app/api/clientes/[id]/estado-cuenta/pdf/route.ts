@@ -71,7 +71,8 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
   const cobQ = await ctx.supabase
     .from("cobros_clientes")
     .select("fecha_pago, monto, metodo_pago, referencia, usuario_nombre")
-    .eq("empresa_id", empresaId).eq("cliente_id", id).order("fecha_pago", { ascending: false }).limit(500);
+    .eq("empresa_id", empresaId).eq("cliente_id", id).is("anulado_at", null)
+    .order("fecha_pago", { ascending: false }).limit(500);
   const cobros = (cobQ.data ?? []) as Record<string, unknown>[];
 
   let nombreEmpresa: string | null = null;

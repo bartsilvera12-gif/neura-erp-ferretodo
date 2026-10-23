@@ -193,6 +193,55 @@ Registra un pago contra una factura.
 
 ---
 
+### Cobranzas de crédito (cuentas por cobrar)
+
+Una venta a crédito genera una cuenta por cobrar (`cuentas_por_cobrar`) y los cobros
+(`cobros_clientes`) la van reduciendo. El **total de la cuenta nunca se modifica**: lo que
+cambia es el `saldo` y el `estado` (`pendiente` → `parcial` → `pagado`), que se recalculan
+siempre como `total - suma de cobros vigentes (no anulados)`.
+
+#### GET /api/cobros/cuentas
+
+Cuentas por cobrar + resumen + historial de cobros. Los cobros anulados se devuelven con
+`anulado_at` para mostrarlos en el historial, pero no suman al cobrado.
+
+#### POST /api/cobros
+
+Registra un cobro (total o parcial) contra una cuenta por cobrar.
+
+| Campo                 | Tipo   | Obligatorio | Descripción                                        |
+|-----------------------|--------|-------------|----------------------------------------------------|
+| cuenta_por_cobrar_id  | string | Sí          | UUID de la cuenta por cobrar                       |
+| monto                 | number | Sí          | Monto cobrado (> 0, no puede superar el saldo)     |
+| metodo_pago           | string | No          | `efectivo`, `transferencia`, `tarjeta`, `otro`     |
+| entidad_bancaria_id   | string | No          | Obligatorio en la UI para transferencia/tarjeta    |
+| referencia            | string | No          | Nº de operación / comprobante                      |
+| titular               | string | No          | Titular de la cuenta o tarjeta                     |
+| fecha_pago            | string | No          | ISO; por defecto, ahora                            |
+
+Si el monto es menor al saldo, la cuenta queda `parcial` con la diferencia pendiente.
+
+#### POST /api/cobros/[id]/anular — solo admin
+
+Anula un cobro mal registrado. Anulación **soft**: el cobro queda en el historial con
+`anulado_at` + auditoría (quién y por qué), deja de contar para el saldo, se revierte su
+ingreso en caja (anulando el movimiento si la caja sigue abierta, o con un egreso
+compensatorio si ya cerró) y se anula el recibo de dinero emitido. Idempotente.
+
+**Body:** `{ motivo?: string }`
+
+#### PATCH /api/cobros/[id] — solo admin
+
+Corrige un cobro mal registrado: anula el original y registra uno nuevo con el monto /
+método / fecha correctos sobre la misma cuenta, encadenado por `reemplaza_a_cobro_id`.
+Caso típico: se cobró el saldo total cuando el cliente abonó solo una parte.
+
+**Body:** mismos campos que `POST /api/cobros` (sin `cuenta_por_cobrar_id`) + `motivo`.
+
+**Respuesta:** `{ cobro_id, cobro_anulado_id, saldo_nuevo, estado }`.
+
+---
+
 ### Suscripciones
 
 #### GET /api/suscripciones

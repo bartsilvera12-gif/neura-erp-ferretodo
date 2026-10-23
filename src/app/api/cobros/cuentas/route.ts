@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
       .from("cobros_clientes")
       .select("monto, fecha_pago")
       .eq("empresa_id", empresaId)
+      .is("anulado_at", null)
       .gte("fecha_pago", inicioMes);
     let cobradoMes = 0;
     for (const r of (cobMesQ.data ?? []) as Record<string, unknown>[]) cobradoMes += Number(r.monto) || 0;
@@ -95,7 +96,9 @@ export async function GET(request: NextRequest) {
     // Historial de cobros recientes (para la pestaña de cobros registrados).
     const histQ = await ctx.supabase
       .from("cobros_clientes")
-      .select("id, cliente_id, venta_id, cuenta_por_cobrar_id, fecha_pago, monto, metodo_pago, referencia, usuario_nombre")
+      .select(
+        "id, cliente_id, venta_id, cuenta_por_cobrar_id, fecha_pago, monto, metodo_pago, entidad_bancaria_id, entidad_nombre_snapshot, titular, referencia, usuario_nombre, anulado_at, anulado_motivo, anulado_por_nombre, reemplaza_a_cobro_id"
+      )
       .eq("empresa_id", empresaId)
       .order("fecha_pago", { ascending: false })
       .limit(500);
@@ -124,8 +127,16 @@ export async function GET(request: NextRequest) {
       fecha_pago: r.fecha_pago ?? null,
       monto: Number(r.monto) || 0,
       metodo_pago: r.metodo_pago ?? "efectivo",
+      entidad_bancaria_id: r.entidad_bancaria_id ? String(r.entidad_bancaria_id) : null,
+      entidad_nombre_snapshot: r.entidad_nombre_snapshot ?? null,
+      titular: r.titular ?? null,
       referencia: r.referencia ?? null,
       usuario_nombre: r.usuario_nombre ?? null,
+      cuenta_por_cobrar_id: r.cuenta_por_cobrar_id ? String(r.cuenta_por_cobrar_id) : null,
+      anulado_at: r.anulado_at ? String(r.anulado_at) : null,
+      anulado_motivo: r.anulado_motivo ?? null,
+      anulado_por_nombre: r.anulado_por_nombre ?? null,
+      reemplaza_a_cobro_id: r.reemplaza_a_cobro_id ? String(r.reemplaza_a_cobro_id) : null,
     }));
 
     return NextResponse.json(

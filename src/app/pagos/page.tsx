@@ -6,6 +6,8 @@ import { Banknote, Loader2 } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { generarYAbrirRecibo } from "@/lib/recibos/client";
 import { RegistrarCobroModalCxc } from "@/components/cobros/RegistrarCobroModalCxc";
+import { CorregirCobroModal, type CobroRef } from "@/components/cobros/CorregirCobroModal";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 type Cuenta = {
   id: string;
@@ -29,8 +31,15 @@ type Cobro = {
   fecha_pago: string | null;
   monto: number;
   metodo_pago: string;
+  entidad_bancaria_id: string | null;
+  titular: string | null;
   referencia: string | null;
   usuario_nombre: string | null;
+  cuenta_por_cobrar_id: string | null;
+  /** Cobros anulados se muestran (historial) pero no suman ni se corrigen. */
+  anulado_at: string | null;
+  anulado_motivo: string | null;
+  anulado_por_nombre: string | null;
 };
 
 const ESTADO_BADGE: Record<string, string> = {
@@ -71,7 +80,9 @@ export default function PagosPage() {
   const [toast, setToast] = useState<string | null>(null);
 
   const [cobrando, setCobrando] = useState<Cuenta | null>(null);
+  const [corrigiendo, setCorrigiendo] = useState<CobroRef | null>(null);
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
+  const { isAdmin } = useIsAdmin();
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -125,7 +136,10 @@ export default function PagosPage() {
     () => pendientes.reduce((a, c) => ({ total: a.total + c.total, saldo: a.saldo + c.saldo }), { total: 0, saldo: 0 }),
     [pendientes]
   );
-  const sumCob = useMemo(() => cobradosVista.reduce((a, c) => a + c.monto, 0), [cobradosVista]);
+  const sumCob = useMemo(
+    () => cobradosVista.reduce((a, c) => (c.anulado_at ? a : a + c.monto), 0),
+    [cobradosVista]
+  );
 
   function abrirCobro(c: Cuenta) {
     setCobrando(c);
@@ -279,11 +293,12 @@ export default function PagosPage() {
                     <th className="py-3 px-4 font-medium">Registrado por</th>
                     <th className="py-3 px-4 font-medium text-right">Monto</th>
                     <th className="py-3 px-4 font-medium text-right">Recibo</th>
+                    {isAdmin && <th className="py-3 px-4 font-medium text-right">Corregir</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {cobradosVista.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50">
+                    <tr key={c.id} className={`hover:bg-slate-50 ${c.anulado_at ? "bg-slate-50/70 text-slate-400" : ""}`}>
                       <td className="py-2.5 px-4 text-gray-600">{fmtFecha(c.fecha_pago)}</td>
                       <td className="py-2.5 px-4 text-gray-700">
                         {c.cliente_id ? <Link href={`/clientes/${c.cliente_id}/estado-cuenta`} className="hover:text-[#4FAEB2] hover:underline">{c.cliente_nombre}</Link> : c.cliente_nombre}
@@ -292,10 +307,24 @@ export default function PagosPage() {
                       <td className="py-2.5 px-4 text-gray-600">{METODO_LABEL[c.metodo_pago] ?? c.metodo_pago}</td>
                       <td className="py-2.5 px-4 text-gray-500">{c.referencia ?? "—"}</td>
                       <td className="py-2.5 px-4 text-gray-600">{c.usuario_nombre ?? "—"}</td>
-                      <td className="py-2.5 px-4 text-right tabular-nums font-semibold text-emerald-700">{fmtGs(c.monto)}</td>
+                      <td className="py-2.5 px-4 text-right tabular-nums font-semibold">
+                        {c.anulado_at ? (
+                          <>
+                            <span className="line-through text-slate-400">{fmtGs(c.monto)}</span>
+                            <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">Anulado</span>
+                            {c.anulado_motivo && (
+                              <p className="mt-0.5 text-[10px] font-normal text-slate-400">
+                                {c.anulado_motivo}{c.anulado_por_nombre ? ` · ${c.anulado_por_nombre}` : ""}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-emerald-700">{fmtGs(c.monto)}</span>
+                        )}
+                      </td>
                       <td className="py-2.5 px-4 text-right">
                         <button
-                          disabled={reciboBusy === c.id}
+                          disabled={reciboBusy === c.id || !!c.anulado_at}
                           onClick={async () => {
                             if (reciboBusy) return;
                             setReciboBusy(c.id);
@@ -312,6 +341,30 @@ export default function PagosPage() {
                           {reciboBusy === c.id ? <><Loader2 className="h-3 w-3 animate-spin" /> Abriendo…</> : "Recibo"}
                         </button>
                       </td>
+                      {isAdmin && (
+                        <td className="py-2.5 px-4 text-right">
+                          {c.anulado_at ? (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          ) : (
+                            <button
+                              onClick={() => setCorrigiendo({
+                                id: c.id,
+                                monto: c.monto,
+                                metodo_pago: c.metodo_pago,
+                                referencia: c.referencia,
+                                titular: c.titular,
+                                entidad_bancaria_id: c.entidad_bancaria_id,
+                                fecha_pago: c.fecha_pago,
+                                numero_venta: c.numero_venta,
+                                cliente_nombre: c.cliente_nombre,
+                              })}
+                              className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                            >
+                              Corregir
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -323,7 +376,7 @@ export default function PagosPage() {
                     </td>
                     <td className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500">Cobrado</td>
                     <td className="px-4 py-3 text-right"><p className="text-sm font-bold tabular-nums text-emerald-700">{fmtGs(sumCob)}</p></td>
-                    <td className="px-4 py-3" />
+                    <td colSpan={isAdmin ? 2 : 1} className="px-4 py-3" />
                   </tr>
                 </tfoot>
               </table>
@@ -338,6 +391,14 @@ export default function PagosPage() {
         cuenta={cobrando ? { id: cobrando.id, numero_venta: cobrando.numero_venta, saldo: cobrando.saldo, moneda: cobrando.moneda, cliente_nombre: cobrando.cliente_nombre } : null}
         onClose={() => setCobrando(null)}
         onExito={async () => { setToast("Pago registrado"); setTimeout(() => setToast(null), 2800); await cargar(); }}
+      />
+
+      {/* Corrección / anulación de una cobranza mal registrada (solo admin) */}
+      <CorregirCobroModal
+        open={!!corrigiendo}
+        cobro={corrigiendo}
+        onClose={() => setCorrigiendo(null)}
+        onExito={async (mensaje) => { setToast(mensaje); setTimeout(() => setToast(null), 3500); await cargar(); }}
       />
     </div>
   );

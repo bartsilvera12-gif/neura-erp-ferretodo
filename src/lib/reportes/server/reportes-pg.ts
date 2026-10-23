@@ -434,6 +434,7 @@ export async function getReporteConciliacion(
         LEFT JOIN ${tCli} c ON c.id=cc.cliente_id AND c.empresa_id=cc.empresa_id
         LEFT JOIN ${tEnt} eb ON eb.id=cc.entidad_bancaria_id AND eb.empresa_id=cc.empresa_id
        WHERE cc.empresa_id=$1::uuid AND cc.fecha_pago>=$2::timestamptz AND cc.fecha_pago<=$3::timestamptz
+         AND cc.anulado_at IS NULL
          AND cc.metodo_pago IS NOT NULL AND cc.metodo_pago <> 'efectivo'
     )`;
 
