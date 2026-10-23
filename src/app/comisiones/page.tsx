@@ -28,7 +28,16 @@ type Fila = {
   comision: number;
   detalle?: DetVenta[];
 };
-type DetVenta = { venta_id: string; numero: string; fecha: string | null; vendido: number; costo: number; ganancia: number };
+type DetVenta = {
+  venta_id: string;
+  numero: string;
+  fecha: string | null;
+  tipo?: "CONTADO" | "CREDITO";
+  fecha_cobro?: string | null;
+  vendido: number;
+  costo: number;
+  ganancia: number;
+};
 
 type Escala = { desde: number; hasta: number | null; porcentaje: number };
 
@@ -149,6 +158,7 @@ export default function ComisionesPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Comisiones por vendedor</h1>
           <p className="mt-1 text-sm text-slate-500">5% sobre la ganancia generada en el período (precio venta − costo).</p>
+          <p className="mt-0.5 text-xs text-slate-400">Las ventas a crédito recién suman comisión cuando el cliente termina de pagar la deuda (cuentan en el mes en que se cobró).</p>
           {escalas.length > 0 && (
             <div className="mt-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Regla activa</p>
@@ -284,7 +294,25 @@ export default function ComisionesPage() {
                           <tbody className="divide-y divide-slate-100">
                             {(f.detalle ?? []).map((d) => (
                               <tr key={d.venta_id}>
-                                <td className="px-3 py-1.5 font-mono text-slate-700">{d.numero || "—"}</td>
+                                <td className="px-3 py-1.5 font-mono text-slate-700">
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{d.numero || "—"}</span>
+                                    {d.tipo === "CREDITO" ? (
+                                      <span className="rounded-full bg-orange-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-700">
+                                        Crédito
+                                      </span>
+                                    ) : d.tipo === "CONTADO" ? (
+                                      <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-700">
+                                        Contado
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {d.tipo === "CREDITO" && d.fecha_cobro ? (
+                                    <div className="mt-0.5 font-sans text-[10px] text-emerald-600">
+                                      Cobrada el {new Date(d.fecha_cobro).toLocaleDateString("es-PY")}
+                                    </div>
+                                  ) : null}
+                                </td>
                                 <td className="px-3 py-1.5 text-slate-500">{d.fecha ? new Date(d.fecha).toLocaleDateString("es-PY") : "—"}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums text-slate-700">{fmtGs(d.vendido)}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{fmtGs(d.costo)}</td>
