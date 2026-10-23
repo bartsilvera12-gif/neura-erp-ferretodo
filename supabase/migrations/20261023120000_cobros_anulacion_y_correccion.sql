@@ -66,3 +66,10 @@ BEGIN
     $q$, sch, sch, sch);
   END LOOP;
 END $$;
+
+-- ── Refresco del cache de esquema de PostgREST ──────────────────────────────
+-- El API de Supabase cachea las columnas de cada tabla: sin este aviso, las
+-- columnas recién agregadas siguen dando "Could not find the 'anulado_at'
+-- column of 'cobros_clientes' in the schema cache" hasta el próximo reinicio.
+-- Sin PostgREST escuchando es un no-op.
+NOTIFY pgrst, 'reload schema';
