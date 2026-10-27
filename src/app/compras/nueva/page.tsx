@@ -116,7 +116,7 @@ export default function NuevaCompraPage() {
 
   const [mostrarFormProducto, setMostrarFormProducto] = useState(false);
   const [formProducto, setFormProducto] = useState({
-    nombre: "", sku: "", unidad_medida: "Unidad", metodo_valuacion: "CPP" as MetodoValuacion,
+    nombre: "", sku: "", codigo_barras: "", unidad_medida: "Unidad", metodo_valuacion: "CPP" as MetodoValuacion,
     stock_minimo: "0", precio_venta_sugerido: "", tipo: "reventa" as "reventa" | "menu" | "materia",
   });
   const [errorSku, setErrorSku] = useState<string | null>(null);
@@ -366,6 +366,9 @@ export default function NuevaCompraPage() {
         : { es_vendible: true, es_insumo: false, controla_stock: true };
     const creado = await saveProducto({
       nombre: formProducto.nombre.trim().toUpperCase(), sku: formProducto.sku.trim().toUpperCase(),
+      // Código de barras escaneado/cargado. Si va vacío, el backend le asigna uno
+      // interno automático (INT-...), igual que en el alta de productos.
+      codigo_barras: formProducto.codigo_barras.trim() || undefined,
       unidad_medida: formProducto.unidad_medida.toUpperCase(), metodo_valuacion: formProducto.metodo_valuacion,
       stock_actual: 0, stock_minimo: parseInt(formProducto.stock_minimo) || 0,
       costo_promedio: 0, precio_venta: parseFloat(formProducto.precio_venta_sugerido) || 0,
@@ -378,11 +381,11 @@ export default function NuevaCompraPage() {
     agregarProducto(creado);
     setProductoCreado(creado.nombre);
     setMostrarFormProducto(false);
-    setFormProducto({ nombre: "", sku: "", unidad_medida: "Unidad", metodo_valuacion: "CPP", stock_minimo: "0", precio_venta_sugerido: "", tipo: "reventa" });
+    setFormProducto({ nombre: "", sku: "", codigo_barras: "", unidad_medida: "Unidad", metodo_valuacion: "CPP", stock_minimo: "0", precio_venta_sugerido: "", tipo: "reventa" });
   }
   function handleCancelarProducto() {
     setMostrarFormProducto(false);
-    setFormProducto({ nombre: "", sku: "", unidad_medida: "Unidad", metodo_valuacion: "CPP", stock_minimo: "0", precio_venta_sugerido: "", tipo: "reventa" });
+    setFormProducto({ nombre: "", sku: "", codigo_barras: "", unidad_medida: "Unidad", metodo_valuacion: "CPP", stock_minimo: "0", precio_venta_sugerido: "", tipo: "reventa" });
     setErrorSku(null);
   }
 
@@ -621,6 +624,12 @@ export default function NuevaCompraPage() {
                         </button>
                       </div>
                       {errorSku && <p className="mt-1 text-xs text-red-600">{errorSku}</p>}
+                    </div>
+                    <div>
+                      <label className={labelSmClass}>Código de barras <span className="font-normal text-slate-400">(opcional)</span></label>
+                      <input type="text" name="codigo_barras" value={formProducto.codigo_barras} onChange={handleProductoInputChange}
+                        placeholder="Escaneá o escribí el código (EAN-13)" autoComplete="off" inputMode="numeric" className={`${inputSmClass} uppercase`} />
+                      <p className="mt-0.5 text-[10px] text-slate-400">Si lo dejás vacío, se le asigna un código interno automático.</p>
                     </div>
                     <div>
                       <label className={labelSmClass}>Unidad de medida</label>
