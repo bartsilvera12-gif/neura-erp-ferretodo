@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { SolicitudesAjustePanel } from "@/components/inventario/SolicitudesAjustePanel";
 import {
   Search,
   Plus,
@@ -90,6 +91,9 @@ export default function MovimientosPage() {
 
   // Paginacion
   const [page, setPage] = useState(1);
+  // Para refrescar la lista tras aprobar/rechazar una solicitud de ajuste.
+  const [reloadKey, setReloadKey] = useState(0);
+  const recargar = () => setReloadKey((k) => k + 1);
 
   // Debounce de busqueda (350ms)
   useEffect(() => {
@@ -123,7 +127,7 @@ export default function MovimientosPage() {
     return () => {
       cancelled = true;
     };
-  }, [page, busquedaDebounced, filtroTipo, filtroOrigen, fechaDesde, fechaHasta]);
+  }, [page, busquedaDebounced, filtroTipo, filtroOrigen, fechaDesde, fechaHasta, reloadKey]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -179,6 +183,11 @@ export default function MovimientosPage() {
           </Link>
         </div>
       </header>
+
+      {/* Solicitudes de ajuste de stock pendientes (solo admin) */}
+      <div className="mb-6">
+        <SolicitudesAjustePanel onCambio={recargar} />
+      </div>
 
       {/* Card principal */}
       <section className="bg-white rounded-2xl border-2 border-[#4FAEB2]/20 shadow-[0_2px_10px_-2px_rgba(79,174,178,0.12)] overflow-hidden">

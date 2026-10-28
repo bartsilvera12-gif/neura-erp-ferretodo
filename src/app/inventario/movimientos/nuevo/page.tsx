@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MontoInput from "@/components/ui/MontoInput";
-import { getProductos, saveMovimiento } from "@/lib/inventario/storage";
+import { getProductos } from "@/lib/inventario/storage";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import type { Producto, TipoMovimiento, OrigenMovimiento } from "@/lib/inventario/types";
 
 export default function NuevoMovimientoPage() {
   const router = useRouter();
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [enviando, setEnviando] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const [form, setForm] = useState({
     producto_id: "",
@@ -16,6 +19,7 @@ export default function NuevoMovimientoPage() {
     cantidad: "",
     costo_unitario: "",
     origen: "compra" as OrigenMovimiento,
+    motivo: "",
   });
 
   useEffect(() => {
@@ -51,6 +55,7 @@ export default function NuevoMovimientoPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setFeedback(null);
 
     const productoSeleccionado = productos.find((p) => p.id === form.producto_id);
     if (!productoSeleccionado) return;
@@ -59,19 +64,48 @@ export default function NuevoMovimientoPage() {
       form.tipo === "AJUSTE"
         ? parseFloat(form.cantidad)
         : Math.abs(parseFloat(form.cantidad));
+    if (!Number.isFinite(cantidadNum) || cantidadNum === 0) {
+      setFeedback({ ok: false, msg: "Ingresá una cantidad válida (distinta de 0)." });
+      return;
+    }
 
-    const guardado = await saveMovimiento({
-      producto_id: productoSeleccionado.id,
-      producto_nombre: productoSeleccionado.nombre,
-      producto_sku: productoSeleccionado.sku,
-      tipo: form.tipo,
-      cantidad: cantidadNum,
-      costo_unitario: parseFloat(form.costo_unitario) || 0,
-      origen: form.origen,
-      fecha: new Date().toISOString(),
-    });
-
-    if (guardado) router.push("/inventario/movimientos");
+    setEnviando(true);
+    try {
+      // El servidor decide: si es admin aplica directo; si no, crea una solicitud
+      // pendiente de aprobación y le notifica al administrador.
+      const res = await fetchWithSupabaseSession("/api/inventario/ajuste-stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          producto_id: productoSeleccionado.id,
+          producto_nombre: productoSeleccionado.nombre,
+          producto_sku: productoSeleccionado.sku,
+          tipo: form.tipo,
+          cantidad: cantidadNum,
+          costo_unitario: parseFloat(form.costo_unitario) || 0,
+          origen: form.origen,
+          motivo: form.motivo.trim() || null,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok || j?.success === false) {
+        setFeedback({ ok: false, msg: j?.error ?? "No se pudo procesar el movimiento." });
+        return;
+      }
+      if (j.data?.aplicado) {
+        router.push("/inventario/movimientos");
+      } else {
+        setFeedback({
+          ok: true,
+          msg: "Tu solicitud fue enviada al administrador para su aprobación. El stock se modificará cuando la apruebe.",
+        });
+        setForm((prev) => ({ ...prev, cantidad: "", motivo: "" }));
+      }
+    } catch {
+      setFeedback({ ok: false, msg: "Error de red. Intentá de nuevo." });
+    } finally {
+      setEnviando(false);
+    }
   }
 
   const productoSeleccionado = productos.find((p) => p.id === form.producto_id);
@@ -177,6 +211,19 @@ export default function NuevoMovimientoPage() {
             </div>
           </div>
 
+          {/* Motivo (opcional) */}
+          <div>
+            <label className={labelClass}>Motivo <span className="text-xs text-gray-400 font-normal">(opcional)</span></label>
+            <input
+              type="text"
+              name="motivo"
+              value={form.motivo}
+              onChange={handleChange}
+              placeholder="Ej: rotura, conteo físico, ajuste de inventario…"
+              className={inputClass}
+            />
+          </div>
+
           {/* Nota de fecha automática */}
           <p className="text-xs text-gray-400">
             La fecha y hora del movimiento se registrarán automáticamente al guardar.
@@ -225,13 +272,20 @@ export default function NuevoMovimientoPage() {
             </div>
           )}
 
+          {feedback && (
+            <div className={`rounded-lg border p-3 text-sm ${feedback.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>
+              {feedback.msg}
+            </div>
+          )}
+
           {/* Acciones */}
           <div className="flex gap-4 pt-2">
             <button
               type="submit"
-              className="bg-gray-900 text-white px-5 py-3 rounded-lg text-sm hover:bg-gray-700 transition-colors"
+              disabled={enviando}
+              className="bg-gray-900 text-white px-5 py-3 rounded-lg text-sm hover:bg-gray-700 transition-colors disabled:opacity-50"
             >
-              Guardar movimiento
+              {enviando ? "Procesando…" : "Guardar movimiento"}
             </button>
             <button
               type="button"

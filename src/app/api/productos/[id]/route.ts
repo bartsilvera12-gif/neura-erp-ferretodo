@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { isAdmin } from "@/lib/middleware/auth";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
@@ -97,7 +98,10 @@ export async function PATCH(
     if (body.sku !== undefined) patch.sku = normalizeUpperText(body.sku);
     if (body.costo_promedio !== undefined) patch.costo_promedio = Number(body.costo_promedio) || 0;
     if (body.precio_venta !== undefined) patch.precio_venta = Number(body.precio_venta) || 0;
-    if (body.stock_actual !== undefined) patch.stock_actual = Number(body.stock_actual) || 0;
+    // El stock solo lo modifica el admin directo. Un no-admin debe usar
+    // Inventario → Movimientos (que crea una solicitud para que el admin apruebe);
+    // acá se ignora su cambio de stock para no saltear la autorización.
+    if (body.stock_actual !== undefined && isAdmin(ctx.auth)) patch.stock_actual = Number(body.stock_actual) || 0;
     if (body.stock_minimo !== undefined) patch.stock_minimo = Number(body.stock_minimo) || 0;
     if (body.unidad_medida !== undefined) patch.unidad_medida = normalizeUpperText(body.unidad_medida) || "UNIDAD";
     if (body.metodo_valuacion !== undefined) {
