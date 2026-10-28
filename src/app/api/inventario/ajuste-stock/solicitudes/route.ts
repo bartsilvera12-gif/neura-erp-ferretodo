@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
+import { getTenantSupabaseFromAuthWithRol } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { isAdmin } from "@/lib/middleware/auth";
@@ -14,7 +14,7 @@ import { ajustePool } from "@/lib/inventario/server/ajuste-stock-pg";
  */
 export async function GET(request: NextRequest) {
   try {
-    const ctx = await getTenantSupabaseFromAuth(request);
+    const ctx = await getTenantSupabaseFromAuthWithRol(request);
     if (!ctx) return NextResponse.json(errorResponse(API_ERRORS.UNAUTHORIZED), { status: 401 });
     if (!isAdmin(ctx.auth)) return NextResponse.json(errorResponse("Solo un administrador puede ver las solicitudes."), { status: 403 });
     const empresaId = ctx.auth.empresa_id;

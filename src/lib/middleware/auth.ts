@@ -31,6 +31,7 @@ export async function getAuthWithRol(request?: Request | null): Promise<UsuarioC
   return {
     user: r.ctx.user,
     empresa_id: r.ctx.empresa_id,
+    usuarioCatalogId: r.ctx.usuarioCatalogId ?? null,
     rol: r.ctx.usuarioRol ?? undefined,
     nombre: r.ctx.usuarioNombre ?? undefined,
   };
