@@ -57,14 +57,14 @@ export default function CambiarPasswordModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-900/50 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl border-2 border-[#4FAEB2]/20 bg-white shadow-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border-2 border-[#4FAEB2]/20 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/10 to-transparent px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-gradient-to-r from-[#4FAEB2]/10 to-transparent px-5 py-4">
           <div className="flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-[#3F8E91]" />
             <h3 className="text-base font-bold text-slate-800">Cambiar contraseña</h3>
@@ -80,7 +80,7 @@ export default function CambiarPasswordModal({
         </div>
 
         {ok ? (
-          <div className="flex flex-col items-center gap-3 px-5 py-8 text-center">
+          <div className="flex flex-col items-center gap-3 overflow-y-auto px-5 py-8 text-center">
             <CheckCircle2 className="h-12 w-12 text-emerald-500" />
             <p className="text-sm font-semibold text-slate-800">¡Contraseña actualizada!</p>
             <p className="text-xs text-slate-500">
@@ -95,7 +95,7 @@ export default function CambiarPasswordModal({
             </button>
           </div>
         ) : (
-          <div className="space-y-3 p-5">
+          <div className="space-y-3 overflow-y-auto p-5">
             <label className="block">
               <span className={labelClass}>Contraseña actual</span>
               <input

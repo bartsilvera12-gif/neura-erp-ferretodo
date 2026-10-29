@@ -1,4 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseDbSchemaOption } from "@/lib/supabase/schema";
 
 // Placeholders para permitir build en Vercel sin env vars; en producción debe configurar las variables.
@@ -23,15 +24,23 @@ export function createBrowserClientForSchema(schema: string) {
 
 /**
  * Cliente efímero (en memoria) SOLO para verificar credenciales sin tocar la
- * sesión activa del usuario. `persistSession:false` + storageKey propio evitan
- * sobrescribir la sesión real guardada por `supabase`.
+ * sesión activa del usuario.
+ *
+ * IMPORTANTE: se usa `createClient` de @supabase/supabase-js, NO
+ * `createBrowserClient` de @supabase/ssr. En el browser, `createBrowserClient`
+ * devuelve siempre el mismo cliente cacheado (singleton) e ignora
+ * `storageKey`/`persistSession`, así que "aislar" con él en realidad reutilizaba
+ * la sesión real y el `signOut` posterior la destruía (dejaba al usuario sin
+ * sesión y rompía el cambio de contraseña). Con `createClient` + almacenamiento
+ * en memoria el cliente queda realmente aislado y no toca cookies/localStorage.
  */
 export function createIsolatedAuthClient() {
-  return createBrowserClient(supabaseUrl, supabaseKey, {
+  return createClient(supabaseUrl, supabaseKey, {
     ...supabaseDbSchemaOption,
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+      detectSessionInUrl: false,
       storageKey: "sb-verify-ephemeral",
     },
   });
