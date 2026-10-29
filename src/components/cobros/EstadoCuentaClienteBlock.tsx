@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Download, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Loader2, Download, ChevronDown, ChevronUp, X, Ban } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { RegistrarCobroModalCxc, type CxcRef } from "@/components/cobros/RegistrarCobroModalCxc";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 type Mov = {
   id: string;
@@ -56,6 +57,7 @@ export function EstadoCuentaClienteBlock({
   clienteId: string;
   onCambio?: () => void;
 }) {
+  const { isAdmin } = useIsAdmin();
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [movs, setMovs] = useState<Mov[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +65,11 @@ export function EstadoCuentaClienteBlock({
   const [abierto, setAbierto] = useState(true);
   const [cobrando, setCobrando] = useState<CxcRef | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Anular un crédito (solo admin, créditos sin cobros): devuelve stock + deja Anulado.
+  const [anular, setAnular] = useState<{ id: string; numero: string } | null>(null);
+  const [anularMotivo, setAnularMotivo] = useState("");
+  const [anulando, setAnulando] = useState(false);
+  const [anularErr, setAnularErr] = useState<string | null>(null);
   // Detalle de una venta (qué llevó) al tocar el código de la venta.
   const [detalle, setDetalle] = useState<{ ventaId: string; numero: string } | null>(null);
   const [detalleItems, setDetalleItems] = useState<DetalleItem[]>([]);
@@ -116,6 +123,34 @@ export function EstadoCuentaClienteBlock({
       setDetalleErr("Error de red.");
     } finally {
       setDetalleLoad(false);
+    }
+  }
+
+  async function confirmarAnular() {
+    if (!anular) return;
+    setAnulando(true);
+    setAnularErr(null);
+    try {
+      const res = await fetchWithSupabaseSession(`/api/cobros/cuentas/${anular.id}/anular`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: anularMotivo.trim() || null }),
+      });
+      const body = await res.json();
+      if (!res.ok || body?.success === false) {
+        setAnularErr(body?.error ?? "No se pudo anular el crédito.");
+        return;
+      }
+      setAnular(null);
+      setAnularMotivo("");
+      setToast("Crédito anulado — stock devuelto");
+      setTimeout(() => setToast(null), 2800);
+      await cargar();
+      onCambio?.();
+    } catch {
+      setAnularErr("Error de red.");
+    } finally {
+      setAnulando(false);
     }
   }
 
@@ -297,12 +332,23 @@ export function EstadoCuentaClienteBlock({
                           {x.estado === "pagado" || x.estado === "anulado" ? (
                             <span className="text-xs text-gray-400">—</span>
                           ) : (
-                            <button
-                              onClick={() => setCobrando({ id: x.id, numero_venta: x.numero_venta, saldo: x.saldo })}
-                              className="rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3F8E91]"
-                            >
-                              Cobrar
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setCobrando({ id: x.id, numero_venta: x.numero_venta, saldo: x.saldo })}
+                                className="rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3F8E91]"
+                              >
+                                Cobrar
+                              </button>
+                              {isAdmin && x.cobrado === 0 && (
+                                <button
+                                  onClick={() => { setAnular({ id: x.id, numero: x.numero_venta ?? "" }); setAnularMotivo(""); setAnularErr(null); }}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                                  title="Anular este crédito y devolver los productos al stock"
+                                >
+                                  <Ban className="h-3.5 w-3.5" /> Anular
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -376,6 +422,43 @@ export function EstadoCuentaClienteBlock({
                   </tfoot>
                 </table>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {anular && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => !anulando && setAnular(null)}>
+          <div className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-red-700"><Ban className="h-4 w-4" /> Anular crédito {anular.numero}</h3>
+              <button type="button" onClick={() => !anulando && setAnular(null)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Se va a <strong>anular este crédito</strong>. Los productos de la venta <strong>vuelven al stock</strong> y la deuda queda en <strong>Gs. 0 (Anulado)</strong>. Esta acción no se puede deshacer.
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Motivo <span className="text-slate-400">(opcional)</span></label>
+                <input
+                  type="text"
+                  value={anularMotivo}
+                  onChange={(e) => setAnularMotivo(e.target.value)}
+                  placeholder="Ej: el cliente devolvió la mercadería"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                />
+              </div>
+              {anularErr && <div className="rounded-md border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">{anularErr}</div>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" disabled={anulando} onClick={() => setAnular(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                  Cancelar
+                </button>
+                <button type="button" disabled={anulando} onClick={() => void confirmarAnular()} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                  {anulando ? <><Loader2 className="h-4 w-4 animate-spin" /> Anulando…</> : <>Anular crédito</>}
+                </button>
+              </div>
             </div>
           </div>
         </div>
