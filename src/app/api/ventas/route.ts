@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantSupabaseFromAuth } from "@/lib/supabase/tenant-api";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import type { Venta, LineaVenta, TipoIvaVenta, TipoPrecioVenta } from "@/lib/ventas/types";
 
 interface VentaRow {
@@ -40,6 +41,44 @@ interface VentaItemRow {
 
 function num(v: number | string): number {
   return typeof v === "number" ? v : Number(v);
+}
+
+const ITEMS_SELECT =
+  "venta_id, producto_id, producto_nombre, sku, cantidad, precio_venta_original, precio_venta, tipo_iva, tipo_precio, subtotal, monto_iva, total_linea";
+
+/**
+ * Trae los ítems de un conjunto de ventas sin toparse con los límites de PostgREST:
+ *  - chunk de venta_ids (URL corta, evita el 414 "URI too long"),
+ *  - paginación por `range` dentro de cada chunk (evita el tope de 1000 filas).
+ * Antes se leían TODOS los ventas_items sin límite y PostgREST cortaba en 1000,
+ * dejando sin líneas a las ventas más nuevas cuando el total de ítems superaba 1000.
+ */
+async function fetchItemsForVentas(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  ventaIds: string[]
+): Promise<VentaItemRow[]> {
+  const out: VentaItemRow[] = [];
+  const CHUNK = 80;
+  const PAGE = 1000;
+  for (let i = 0; i < ventaIds.length; i += CHUNK) {
+    const batch = ventaIds.slice(i, i + CHUNK);
+    let from = 0;
+    for (;;) {
+      const q = await sb
+        .from("ventas_items")
+        .select(ITEMS_SELECT)
+        .eq("empresa_id", empresaId)
+        .in("venta_id", batch)
+        .range(from, from + PAGE - 1);
+      if (q.error) throw new Error(q.error.message);
+      const rows = (q.data ?? []) as VentaItemRow[];
+      out.push(...rows);
+      if (rows.length < PAGE) break;
+      from += PAGE;
+    }
+  }
+  return out;
 }
 
 function mapItems(rows: VentaItemRow[]): LineaVenta[] {
@@ -110,16 +149,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const itemsQ = await ctx.supabase
-      .from("ventas_items")
-      .select(
-        "venta_id, producto_id, producto_nombre, sku, cantidad, precio_venta_original, precio_venta, tipo_iva, tipo_precio, subtotal, monto_iva, total_linea"
-      )
-      .eq("empresa_id", empresaId);
-    if (itemsQ.error) throw new Error(itemsQ.error.message);
-
     const ventasRows = (ventasQ.data ?? []) as VentaRow[];
-    const itemsRows = (itemsQ.data ?? []) as VentaItemRow[];
+    const itemsRows = await fetchItemsForVentas(
+      ctx.supabase,
+      empresaId,
+      ventasRows.map((v) => v.id)
+    );
 
     // Nombre del cliente por venta: batch-load desde `clientes` para poder filtrar/mostrar
     // en el listado (empresa → razón social; persona → nombre de contacto). Best-effort.
