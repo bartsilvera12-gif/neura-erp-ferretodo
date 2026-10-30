@@ -4,7 +4,7 @@ export type MonedaVenta = "GS" | "USD";
 export type MetodoPago  = "efectivo" | "tarjeta" | "transferencia" | "cheque" | "mixto";
 /** Nivel de precio elegido para la línea de venta.
  *  'costo' se conserva SOLO como histórico (ventas viejas); ya no se ofrece en la UI. */
-export type TipoPrecioVenta = "minorista" | "mayorista" | "distribuidor" | "costo";
+export type TipoPrecioVenta = "minorista" | "mayorista" | "distribuidor" | "promocion" | "costo";
 
 /** Un ítem dentro de una venta (una línea de producto). */
 export interface LineaVenta {

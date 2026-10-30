@@ -31,8 +31,8 @@ function asItems(body: unknown): CreateVentaItemInput[] | null {
     const tipoIva = r.tipo_iva;
     if (tipoIva !== "EXENTA" && tipoIva !== "5%" && tipoIva !== "10%") return null;
     const tp = r.tipo_precio;
-    const tipoPrecio: "minorista" | "mayorista" | "distribuidor" | "costo" =
-      tp === "mayorista" || tp === "distribuidor" || tp === "costo" ? tp : "minorista";
+    const tipoPrecio: "minorista" | "mayorista" | "distribuidor" | "promocion" | "costo" =
+      tp === "mayorista" || tp === "distribuidor" || tp === "promocion" || tp === "costo" ? tp : "minorista";
     out.push({
       producto_id: String(r.producto_id ?? ""),
       producto_nombre: String(r.producto_nombre ?? ""),

@@ -11,6 +11,7 @@ export interface ProductoPickerItem {
   precio_venta: number;
   precio_mayorista: number;
   precio_distribuidor?: number | null;
+  precio_promocion?: number | null;
   costo_promedio: number;
   stock_actual: number;
   stock_minimo: number;
@@ -46,7 +47,7 @@ export interface AgregarVentaPayload {
   precio_input: number;
   iva: "EXENTA" | "5%" | "10%";
   /** Nivel de precio elegido en el panel de detalle. */
-  tipo_precio: "minorista" | "mayorista" | "distribuidor";
+  tipo_precio: "minorista" | "mayorista" | "distribuidor" | "promocion";
   /** Presentacion de venta elegida (Caja, Unidad, Paquete...). Opcional para
    *  retrocompat: cuando no viene, el backend usa la default del producto. */
   presentacion_id?: string | null;
@@ -71,10 +72,11 @@ interface PresentacionLite {
  */
 function precioPorTipoPicker(
   p: ProductoPickerItem,
-  tipo: "minorista" | "mayorista" | "distribuidor"
+  tipo: "minorista" | "mayorista" | "distribuidor" | "promocion"
 ): number {
   if (tipo === "mayorista") return p.precio_mayorista != null && p.precio_mayorista > 0 ? p.precio_mayorista : p.precio_venta;
   if (tipo === "distribuidor") return p.precio_distribuidor != null && p.precio_distribuidor > 0 ? p.precio_distribuidor : p.precio_venta;
+  if (tipo === "promocion") return p.precio_promocion != null && p.precio_promocion > 0 ? p.precio_promocion : p.precio_venta;
   return p.precio_venta;
 }
 
@@ -113,7 +115,7 @@ export default function ProductPickerModal({
   const [cantidad, setCantidad] = useState("1");
   const [precio, setPrecio] = useState("");
   const [iva, setIva] = useState<"EXENTA" | "5%" | "10%">(ivaDefault);
-  const [tipoPrecio, setTipoPrecio] = useState<"minorista" | "mayorista" | "distribuidor">("minorista");
+  const [tipoPrecio, setTipoPrecio] = useState<"minorista" | "mayorista" | "distribuidor" | "promocion">("minorista");
   const [feedback, setFeedback] = useState<string | null>(null);
   // Venta por peso: unidad del input (kg o g) cuando el producto se vende por kilo.
   const [pesoUnidad, setPesoUnidad] = useState<"kg" | "g">("kg");
@@ -139,7 +141,7 @@ export default function ProductPickerModal({
    *   handlePresentacionChange).
    * - Sin override: precio = precio_tipo * cantidad_base.
    */
-  function handleTipoPrecio(tipo: "minorista" | "mayorista" | "distribuidor") {
+  function handleTipoPrecio(tipo: "minorista" | "mayorista" | "distribuidor" | "promocion") {
     setTipoPrecio(tipo);
     setFeedback(null);
     if (!sel) return;
@@ -519,7 +521,7 @@ export default function ProductPickerModal({
                   <div>
                     <label className="block text-[11px] uppercase text-slate-400 mb-1">Tipo de precio</label>
                     <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-                      {(["minorista", "mayorista", "distribuidor"] as const).map((t) => (
+                      {(["minorista", "mayorista", "distribuidor", "promocion"] as const).map((t) => (
                         <button
                           key={t}
                           type="button"
@@ -529,7 +531,7 @@ export default function ProductPickerModal({
                           }`}
                         >
                           <span className="block text-xs font-medium">
-                            {t === "minorista" ? "Minorista" : t === "mayorista" ? "Mayorista" : "Distribuidor"}
+                            {t === "minorista" ? "Minorista" : t === "mayorista" ? "Mayorista" : t === "distribuidor" ? "Distribuidor" : "Promoción"}
                           </span>
                           <span className={`block text-[10px] tabular-nums ${tipoPrecio === t ? "text-white/90" : "text-slate-400"}`}>
                             {/* El precio mostrado en cada boton es el de la

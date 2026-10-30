@@ -14,6 +14,8 @@ export interface Producto {
   cantidad_minima_mayorista?: number | null;
   /** Precio distribuidor (opcional). Precio comercial por canal — NO es el costo. */
   precio_distribuidor?: number | null;
+  /** Precio promoción (opcional). Precio promocional que el vendedor puede elegir — NO es el costo. */
+  precio_promocion?: number | null;
   stock_actual: number;
   stock_minimo: number;
   unidad_medida: string;

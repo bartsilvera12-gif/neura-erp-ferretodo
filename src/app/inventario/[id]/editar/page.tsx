@@ -51,6 +51,7 @@ export default function EditarProductoPage() {
     precio_mayorista: "",
     cantidad_minima_mayorista: "",
     precio_distribuidor: "",
+    precio_promocion: "",
     stock_actual: "",
     stock_minimo: "",
     unidad_medida: "",
@@ -213,6 +214,7 @@ export default function EditarProductoPage() {
         precio_mayorista: p.precio_mayorista != null ? String(p.precio_mayorista) : "",
         cantidad_minima_mayorista: p.cantidad_minima_mayorista != null ? String(p.cantidad_minima_mayorista) : "",
         precio_distribuidor: p.precio_distribuidor != null ? String(p.precio_distribuidor) : "",
+        precio_promocion: p.precio_promocion != null ? String(p.precio_promocion) : "",
         stock_actual: String(p.stock_actual),
         stock_minimo: String(p.stock_minimo),
         unidad_medida: p.unidad_medida,
@@ -391,6 +393,7 @@ export default function EditarProductoPage() {
         precio_mayorista: form.precio_mayorista.trim() !== "" ? parseFloat(form.precio_mayorista) || null : null,
         cantidad_minima_mayorista: form.cantidad_minima_mayorista.trim() !== "" ? parseFloat(form.cantidad_minima_mayorista) || null : null,
         precio_distribuidor: form.precio_distribuidor.trim() !== "" ? parseFloat(form.precio_distribuidor) || null : null,
+        precio_promocion: form.precio_promocion.trim() !== "" ? parseFloat(form.precio_promocion) || null : null,
         stock_actual: parseInt(form.stock_actual) || 0,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida.trim().toUpperCase() || "UNIDAD",
@@ -1119,8 +1122,18 @@ export default function EditarProductoPage() {
                     decimals={false}
                   />
                 </div>
+                <div>
+                  <label className={labelClass}>Precio promoción (Gs.) <span className="text-gray-400 font-normal">(opcional)</span></label>
+                  <MontoInput
+                    value={form.precio_promocion}
+                    onChange={(n) => setForm((prev) => ({ ...prev, precio_promocion: String(n) }))}
+                    placeholder="Ej: 15000"
+                    className={inputClass}
+                    decimals={false}
+                  />
+                </div>
                 <p className="sm:col-span-2 text-xs text-gray-400">
-                  Precios por canal: en Ventas el cajero elige Minorista, Mayorista o Distribuidor. El precio distribuidor es comercial (no es el costo).
+                  Precios por canal: en Ventas el cajero elige Minorista, Mayorista, Distribuidor o Promoción. El precio promoción es comercial (no es el costo) y queda registrado en la venta para el reporte de promociones.
                 </p>
               </div>
             )}

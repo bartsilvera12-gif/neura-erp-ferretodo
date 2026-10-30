@@ -17,7 +17,7 @@ const PRODUCTO_COLS =
   "codigo_barras, codigo_barras_interno, imagen_path, imagen_url, " +
   "categoria_principal_id, ubicacion_principal_id, proveedor_principal_id, " +
   "es_vendible, es_insumo, controla_stock, destacado, oferta_semana_destacada, valorizado, unidad_compra, unidad_receta, " +
-  "factor_compra_receta, tiempo_prep_minutos, descripcion, precio_mayorista, cantidad_minima_mayorista, precio_distribuidor, modo_receta, " +
+  "factor_compra_receta, tiempo_prep_minutos, descripcion, precio_mayorista, cantidad_minima_mayorista, precio_distribuidor, precio_promocion, modo_receta, " +
   "discount_type, discount_value, discount_starts_at, discount_ends_at";
 
 function toNumber(v: unknown): unknown {
@@ -39,6 +39,7 @@ function rowToApi(r: Record<string, unknown>): Record<string, unknown> {
     precio_mayorista: r.precio_mayorista != null ? toNumber(r.precio_mayorista) : null,
     cantidad_minima_mayorista: r.cantidad_minima_mayorista != null ? toNumber(r.cantidad_minima_mayorista) : null,
     precio_distribuidor: r.precio_distribuidor != null ? toNumber(r.precio_distribuidor) : null,
+    precio_promocion: r.precio_promocion != null ? toNumber(r.precio_promocion) : null,
   };
 }
 
@@ -290,6 +291,7 @@ export async function POST(request: NextRequest) {
     insertPayload.precio_mayorista = toNumberOrNull(body.precio_mayorista);
     insertPayload.cantidad_minima_mayorista = toNumberOrNull(body.cantidad_minima_mayorista);
     insertPayload.precio_distribuidor = toNumberOrNull(body.precio_distribuidor);
+    insertPayload.precio_promocion = toNumberOrNull(body.precio_promocion);
     if (body.modo_receta === "produccion_previa" || body.modo_receta === "preparado_al_vender") {
       insertPayload.modo_receta = body.modo_receta;
     }

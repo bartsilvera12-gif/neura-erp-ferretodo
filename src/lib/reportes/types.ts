@@ -100,7 +100,7 @@ export interface ComprasReporte {
 
 // ── Ventas (header `ventas` + líneas `ventas_items`, con tipo_precio) ──────────
 
-export type TipoPrecioReporte = "minorista" | "mayorista" | "distribuidor" | "costo";
+export type TipoPrecioReporte = "minorista" | "mayorista" | "distribuidor" | "promocion" | "costo";
 
 /** Totales por nivel de precio: monto e ítems (líneas). */
 export interface VentaTipoPrecioTotal {
@@ -148,6 +148,8 @@ export interface VentasReporte {
   /** Desglose por nivel de precio (datos null se cuentan como minorista). */
   porTipoPrecio: Record<TipoPrecioReporte, VentaTipoPrecioTotal>;
   porProducto: VentaProductoTotal[];
+  /** Productos vendidos en modalidad Promoción (producto + cantidad + total). */
+  productosPromocion: VentaProductoTotal[];
   ventas: VentaReporteRow[];
   items: ItemVendidoRow[];
 }

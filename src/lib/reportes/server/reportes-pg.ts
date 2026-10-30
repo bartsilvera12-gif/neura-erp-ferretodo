@@ -290,7 +290,7 @@ export async function getReporteCompras(
 /** Normaliza tipo_precio (null/'' → minorista). */
 const TP_SQL = `COALESCE(NULLIF(vi.tipo_precio,''),'minorista')`;
 function normTipoPrecio(v: unknown): TipoPrecioReporte {
-  return v === "mayorista" || v === "distribuidor" || v === "costo" ? v : "minorista";
+  return v === "mayorista" || v === "distribuidor" || v === "promocion" || v === "costo" ? v : "minorista";
 }
 
 export async function getReporteVentas(
@@ -325,6 +325,11 @@ export async function getReporteVentas(
     `SELECT vi.producto_nombre, SUM(vi.cantidad)::float8 AS cantidad, SUM(vi.total_linea)::float8 AS total
        FROM ${tVI} vi JOIN ${tV} v ON v.id=vi.venta_id WHERE ${perV}
       GROUP BY vi.producto_id, vi.producto_nombre ORDER BY total DESC`, args);
+  // Total por producto SOLO en modalidad promoción (para el reporte de promociones).
+  const porProdPromoQ = p.query<VentaProductoTotal>(
+    `SELECT vi.producto_nombre, SUM(vi.cantidad)::float8 AS cantidad, SUM(vi.total_linea)::float8 AS total
+       FROM ${tVI} vi JOIN ${tV} v ON v.id=vi.venta_id WHERE ${perV} AND ${TP_SQL} = 'promocion'
+      GROUP BY vi.producto_id, vi.producto_nombre ORDER BY total DESC`, args);
   // Detalle de ventas (con cliente opcional).
   const ventasQ = p.query<VentaReporteRow>(
     `SELECT v.id, v.numero_control, v.fecha, c.nombre AS cliente, v.metodo_pago,
@@ -342,8 +347,8 @@ export async function getReporteVentas(
        FROM ${tVI} vi JOIN ${tV} v ON v.id=vi.venta_id WHERE ${perV}
       ORDER BY v.fecha DESC, v.numero_control DESC`, args);
 
-  const [tot, itemsTot, tipoPrecio, porProd, ventas, items] = await Promise.all([
-    totQ, itemsTotQ, tipoPrecioQ, porProdQ, ventasQ, itemsQ]);
+  const [tot, itemsTot, tipoPrecio, porProd, porProdPromo, ventas, items] = await Promise.all([
+    totQ, itemsTotQ, tipoPrecioQ, porProdQ, porProdPromoQ, ventasQ, itemsQ]);
 
   const cantidadVentas = num(tot.rows[0]?.ventas);
   const totalVendido = num(tot.rows[0]?.total);
@@ -351,6 +356,7 @@ export async function getReporteVentas(
     minorista: { items: 0, total: 0 },
     mayorista: { items: 0, total: 0 },
     distribuidor: { items: 0, total: 0 },
+    promocion: { items: 0, total: 0 },
     costo: { items: 0, total: 0 },
   };
   for (const r of tipoPrecio.rows) {
@@ -366,6 +372,7 @@ export async function getReporteVentas(
     unidadesVendidas: num(itemsTot.rows[0]?.unidades),
     porTipoPrecio,
     porProducto: porProd.rows.map((r) => ({ ...r, cantidad: num(r.cantidad), total: num(r.total) })),
+    productosPromocion: porProdPromo.rows.map((r) => ({ ...r, cantidad: num(r.cantidad), total: num(r.total) })),
     ventas: ventas.rows.map((v) => ({
       ...v,
       cliente: v.cliente || null,

@@ -49,22 +49,26 @@ function calcIva(tipo: TipoIvaVenta, total: number) {
  * Precio unitario (Gs.) según el tipo elegido, con fallbacks:
  *  minorista → precio_venta;
  *  mayorista → precio_mayorista (>0) o fallback a precio_venta;
+ *  distribuidor → precio_distribuidor (>0) o fallback a precio_venta;
+ *  promocion → precio_promocion (>0) o fallback a precio_venta;
  *  costo     → costo_promedio.
  */
 function precioPorTipo(p: Producto, tipo: TipoPrecioVenta): number {
   if (tipo === "mayorista") return p.precio_mayorista != null && p.precio_mayorista > 0 ? p.precio_mayorista : p.precio_venta;
   if (tipo === "distribuidor") return p.precio_distribuidor != null && p.precio_distribuidor > 0 ? p.precio_distribuidor : p.precio_venta;
+  if (tipo === "promocion") return p.precio_promocion != null && p.precio_promocion > 0 ? p.precio_promocion : p.precio_venta;
   if (tipo === "costo") return p.costo_promedio ?? 0; // histórico: ya no se ofrece en la UI
   return p.precio_venta;
 }
 
 /** Tipos de precio ofrecidos en la UI (sin 'costo', que queda solo como histórico). */
-const TIPOS_PRECIO_UI: TipoPrecioVenta[] = ["minorista", "mayorista", "distribuidor"];
+const TIPOS_PRECIO_UI: TipoPrecioVenta[] = ["minorista", "mayorista", "distribuidor", "promocion"];
 
 const tipoPrecioLabel: Record<TipoPrecioVenta, string> = {
   minorista: "Minorista",
   mayorista: "Mayorista",
   distribuidor: "Distribuidor",
+  promocion: "Promoción",
   costo: "Al costo",
 };
 
@@ -246,6 +250,7 @@ export default function NuevaVentaPage() {
       precio_venta: p.precio_venta,
       precio_mayorista: p.precio_mayorista ?? null,
       precio_distribuidor: p.precio_distribuidor ?? null,
+      precio_promocion: p.precio_promocion ?? null,
       stock_actual: p.stock_actual,
       unidad_medida: p.unidad_medida,
       costo_promedio: p.costo_promedio ?? 0,
@@ -488,7 +493,7 @@ export default function NuevaVentaPage() {
             sku: string | null;
             cantidad: number;
             precio_venta: number;
-            tipo_precio?: "minorista" | "mayorista" | "distribuidor";
+            tipo_precio?: "minorista" | "mayorista" | "distribuidor" | "promocion";
             tipo_iva?: "EXENTA" | "5%" | "10%";
             presentacion_id?: string | null;
             presentacion_nombre?: string | null;
@@ -759,6 +764,7 @@ export default function NuevaVentaPage() {
       precio_venta: Number(p.precio_venta) || 0,
       precio_mayorista: p.precio_mayorista != null ? Number(p.precio_mayorista) : null,
       precio_distribuidor: p.precio_distribuidor != null ? Number(p.precio_distribuidor) : null,
+      precio_promocion: p.precio_promocion != null ? Number(p.precio_promocion) : null,
       stock_actual: Number(p.stock_actual) || 0,
       stock_minimo: Number(p.stock_minimo) || 0,
       unidad_medida: String(p.unidad_medida ?? "UNIDAD"),

@@ -45,7 +45,7 @@ export interface CreateVentaItemInput {
   /** Precio POR PRESENTACION (lo que cobra el cajero por 1 caja, 1 unidad, etc). */
   precio_venta: number;
   tipo_iva: "EXENTA" | "5%" | "10%";
-  tipo_precio: "minorista" | "mayorista" | "distribuidor" | "costo";
+  tipo_precio: "minorista" | "mayorista" | "distribuidor" | "promocion" | "costo";
   subtotal: number;
   monto_iva: number;
   total_linea: number;

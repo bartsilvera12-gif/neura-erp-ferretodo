@@ -24,6 +24,7 @@ const TP: { key: TipoPrecioReporte; label: string; badge: string }[] = [
   { key: "minorista", label: "Minorista", badge: "bg-slate-100 text-slate-600" },
   { key: "mayorista", label: "Mayorista", badge: "bg-indigo-100 text-indigo-700" },
   { key: "distribuidor", label: "Distribuidor", badge: "bg-emerald-100 text-emerald-700" },
+  { key: "promocion", label: "Promoción", badge: "bg-pink-100 text-pink-700" },
   { key: "costo", label: "Al costo", badge: "bg-amber-100 text-amber-700" },
 ];
 
@@ -137,6 +138,38 @@ export default function VentasReportePage() {
                   </thead>
                   <tbody>
                     {data.porProducto.map((p, i) => (
+                      <tr key={i} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2.5 pr-4 text-slate-700">{p.producto_nombre}</td>
+                        <td className="py-2.5 pr-4 text-right tabular-nums text-slate-600">{p.cantidad}</td>
+                        <td className="py-2.5 text-right tabular-nums font-semibold text-slate-800">{formatGs(p.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Productos vendidos en promoción */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-800">Productos vendidos en promoción</h2>
+              <span className="inline-block rounded-full bg-pink-100 px-2 py-0.5 text-[11px] font-semibold text-pink-700">Promoción</span>
+            </div>
+            {data.productosPromocion.length === 0 ? (
+              <p className="text-sm text-slate-400">No hubo ventas en modalidad promoción en este período.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b text-slate-500">
+                      <th className="py-2.5 pr-4 font-medium">Producto</th>
+                      <th className="py-2.5 pr-4 font-medium text-right">Cantidad</th>
+                      <th className="py-2.5 font-medium text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.productosPromocion.map((p, i) => (
                       <tr key={i} className="border-b border-slate-100 last:border-0">
                         <td className="py-2.5 pr-4 text-slate-700">{p.producto_nombre}</td>
                         <td className="py-2.5 pr-4 text-right tabular-nums text-slate-600">{p.cantidad}</td>

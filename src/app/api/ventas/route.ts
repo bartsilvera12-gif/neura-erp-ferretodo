@@ -90,7 +90,7 @@ function mapItems(rows: VentaItemRow[]): LineaVenta[] {
     precio_venta_original: num(r.precio_venta_original),
     precio_venta: num(r.precio_venta),
     tipo_iva: r.tipo_iva as TipoIvaVenta,
-    tipo_precio: (r.tipo_precio === "mayorista" || r.tipo_precio === "distribuidor" || r.tipo_precio === "costo" ? r.tipo_precio : "minorista") as TipoPrecioVenta,
+    tipo_precio: (r.tipo_precio === "mayorista" || r.tipo_precio === "distribuidor" || r.tipo_precio === "promocion" || r.tipo_precio === "costo" ? r.tipo_precio : "minorista") as TipoPrecioVenta,
     subtotal: num(r.subtotal),
     monto_iva: num(r.monto_iva),
     total_linea: num(r.total_linea),

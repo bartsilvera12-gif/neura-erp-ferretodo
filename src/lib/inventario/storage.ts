@@ -19,6 +19,7 @@ interface ProductoRow {
   precio_mayorista?: number | string | null;
   cantidad_minima_mayorista?: number | string | null;
   precio_distribuidor?: number | string | null;
+  precio_promocion?: number | string | null;
   stock_actual: number;
   stock_minimo: number;
   unidad_medida: string;
@@ -81,6 +82,7 @@ function rowToProducto(row: ProductoRow): Producto {
     precio_mayorista: row.precio_mayorista != null ? Number(row.precio_mayorista) : null,
     cantidad_minima_mayorista: row.cantidad_minima_mayorista != null ? Number(row.cantidad_minima_mayorista) : null,
     precio_distribuidor: row.precio_distribuidor != null ? Number(row.precio_distribuidor) : null,
+    precio_promocion: row.precio_promocion != null ? Number(row.precio_promocion) : null,
     stock_actual: Number(row.stock_actual),
     stock_minimo: Number(row.stock_minimo),
     unidad_medida: row.unidad_medida,
@@ -258,6 +260,7 @@ export async function saveProducto(
     precio_mayorista: datos.precio_mayorista ?? null,
     cantidad_minima_mayorista: datos.cantidad_minima_mayorista ?? null,
     precio_distribuidor: datos.precio_distribuidor ?? null,
+    precio_promocion: datos.precio_promocion ?? null,
     stock_actual: datos.stock_actual ?? 0,
     stock_minimo: datos.stock_minimo ?? 0,
     unidad_medida: datos.unidad_medida || "Unidad",
@@ -339,6 +342,7 @@ export async function updateProducto(
   if (datos.precio_mayorista !== undefined) body.precio_mayorista = datos.precio_mayorista ?? null;
   if (datos.cantidad_minima_mayorista !== undefined) body.cantidad_minima_mayorista = datos.cantidad_minima_mayorista ?? null;
   if (datos.precio_distribuidor !== undefined) body.precio_distribuidor = datos.precio_distribuidor ?? null;
+  if (datos.precio_promocion !== undefined) body.precio_promocion = datos.precio_promocion ?? null;
   if (datos.stock_actual !== undefined) body.stock_actual = datos.stock_actual;
   if (datos.stock_minimo !== undefined) body.stock_minimo = datos.stock_minimo;
   if (datos.unidad_medida !== undefined) body.unidad_medida = datos.unidad_medida;

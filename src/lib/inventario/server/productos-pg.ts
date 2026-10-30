@@ -91,6 +91,7 @@ export interface ProductoRow {
   precio_mayorista: string | number | null;
   cantidad_minima_mayorista: string | number | null;
   precio_distribuidor: string | number | null;
+  precio_promocion: string | number | null;
   modo_receta: string;
 }
 
@@ -119,6 +120,7 @@ export interface InsertProductoInput {
   precio_mayorista?: number | null;
   cantidad_minima_mayorista?: number | null;
   precio_distribuidor?: number | null;
+  precio_promocion?: number | null;
 }
 
 const RETURNING = `
@@ -128,7 +130,7 @@ const RETURNING = `
   categoria_principal_id, ubicacion_principal_id, proveedor_principal_id,
   es_vendible, es_insumo,
   controla_stock, valorizado, unidad_compra, unidad_receta, factor_compra_receta, tiempo_prep_minutos,
-  precio_mayorista, cantidad_minima_mayorista, precio_distribuidor, modo_receta
+  precio_mayorista, cantidad_minima_mayorista, precio_distribuidor, precio_promocion, modo_receta
 `;
 
 // ─── Operaciones ──────────────────────────────────────────────────────────
@@ -147,7 +149,7 @@ export async function insertProducto(
       categoria_principal_id, ubicacion_principal_id, proveedor_principal_id,
       es_vendible, es_insumo,
       controla_stock, valorizado, unidad_compra, unidad_receta, factor_compra_receta, tiempo_prep_minutos,
-      precio_mayorista, cantidad_minima_mayorista, precio_distribuidor
+      precio_mayorista, cantidad_minima_mayorista, precio_distribuidor, precio_promocion
     ) VALUES (
       $1::uuid, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7::numeric,
       $8, $9, $10, COALESCE($11::boolean, false),
@@ -155,7 +157,7 @@ export async function insertProducto(
       COALESCE($15::boolean, true), COALESCE($16::boolean, false),
       COALESCE($17::boolean, true), COALESCE($18::boolean, true),
       $19, $20, COALESCE($21::numeric, 1), COALESCE($22::int, 0),
-      $23::numeric, $24::numeric, $25::numeric
+      $23::numeric, $24::numeric, $25::numeric, $26::numeric
     )
     RETURNING ${RETURNING}
   `;
@@ -185,6 +187,7 @@ export async function insertProducto(
     d.precio_mayorista ?? null,
     d.cantidad_minima_mayorista ?? null,
     d.precio_distribuidor ?? null,
+    d.precio_promocion ?? null,
   ];
   try {
     const { rows } = await pool().query<ProductoRow>(sql, params);
@@ -221,6 +224,7 @@ export interface UpdateProductoInput {
   precio_mayorista?: number | null;
   cantidad_minima_mayorista?: number | null;
   precio_distribuidor?: number | null;
+  precio_promocion?: number | null;
   modo_receta?: string;
 }
 
@@ -275,6 +279,7 @@ export async function updateProductoPg(
   if (patch.precio_mayorista !== undefined) add("precio_mayorista", patch.precio_mayorista, "::numeric");
   if (patch.cantidad_minima_mayorista !== undefined) add("cantidad_minima_mayorista", patch.cantidad_minima_mayorista, "::numeric");
   if (patch.precio_distribuidor !== undefined) add("precio_distribuidor", patch.precio_distribuidor, "::numeric");
+  if (patch.precio_promocion !== undefined) add("precio_promocion", patch.precio_promocion, "::numeric");
   if (patch.modo_receta !== undefined) add("modo_receta", patch.modo_receta);
   if (sets.length === 0) return await getProductoPg(schemaRaw, empresaId, id);
 
