@@ -75,6 +75,41 @@ export default function TransferenciaDetallePage() {
           : { modo: "existente", producto_id: "", sku: it.sku_origen ?? "", nombre: it.nombre_origen };
       }
       setAsig(inicial);
+      // Para ítems sin sugerencia, precargamos el buscador con el nombre de origen y
+      // disparamos una búsqueda inicial. Así "Usar existente" muestra candidatos sin
+      // que el usuario tenga que escribir, evitando que piense que la opción no sirve.
+      if (t.rol === "destino" && t.estado === "pendiente") {
+        const busqInicial: Record<string, string> = {};
+        const faltantes: Array<{ itemId: string; q: string }> = [];
+        for (const it of t.items ?? []) {
+          if (s[it.id]) continue;
+          const q = (it.nombre_origen ?? "").trim();
+          if (q.length < 2) continue;
+          busqInicial[it.id] = q;
+          faltantes.push({ itemId: it.id, q });
+        }
+        if (Object.keys(busqInicial).length > 0) setBusq((p) => ({ ...p, ...busqInicial }));
+        for (const { itemId, q } of faltantes) {
+          (async () => {
+            try {
+              const rs = await fetchWithSupabaseSession(
+                `/api/productos/search?q=${encodeURIComponent(q)}&limit=8`,
+                { cache: "no-store" },
+              );
+              const js = await rs.json();
+              const items = ((js?.data?.items ?? []) as Array<Record<string, unknown>>).map((x) => ({
+                id: String(x.id),
+                nombre: String(x.nombre ?? ""),
+                sku: (x.sku as string) ?? null,
+                codigo_barras: (x.codigo_barras as string) ?? null,
+              }));
+              setResBusq((p) => ({ ...p, [itemId]: items }));
+            } catch {
+              // Fallo silencioso: el usuario puede reescribir manualmente.
+            }
+          })();
+        }
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
     } finally {
@@ -235,14 +270,17 @@ export default function TransferenciaDetallePage() {
                       </span>
                     ) : (
                       <div className="space-y-1.5">
-                        <div className="flex gap-1">
-                          {(["existente", "crear"] as const).map((m) => (
-                            <button key={m} type="button"
-                              onClick={() => setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], modo: m } }))}
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium ${a?.modo === m ? "bg-[#4FAEB2] text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
-                              {m === "existente" ? "Usar existente" : "Crear producto"}
-                            </button>
-                          ))}
+                        <div className="flex gap-1" role="radiogroup" aria-label="Modo de asignación">
+                          {(["existente", "crear"] as const).map((m) => {
+                            const activo = a?.modo === m;
+                            return (
+                              <button key={m} type="button" role="radio" aria-checked={activo}
+                                onClick={() => setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], modo: m } }))}
+                                className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${activo ? "bg-[#4FAEB2] text-white shadow-sm" : "border border-[#4FAEB2]/40 bg-white text-[#2F6E71] hover:bg-[#4FAEB2]/10"}`}>
+                                {m === "existente" ? "Usar existente" : "Crear producto"}
+                              </button>
+                            );
+                          })}
                         </div>
                         {a?.modo === "existente" ? (
                           <div className="space-y-1">
@@ -274,7 +312,9 @@ export default function TransferenciaDetallePage() {
                                   </ul>
                                 )}
                                 {(busq[it.id]?.trim().length ?? 0) >= 2 && buscando !== it.id && (resBusq[it.id] ?? []).length === 0 && (
-                                  <p className="text-[11px] text-slate-400">Sin resultados. Probá otro término o usá “Crear producto”.</p>
+                                  <p className="text-[11px] text-slate-500">
+                                    Sin resultados para “{busq[it.id]}”. Probá otro término (SKU o código). Si realmente no existe en tu catálogo, cambiá a “Crear producto”.
+                                  </p>
                                 )}
                               </>
                             )}
