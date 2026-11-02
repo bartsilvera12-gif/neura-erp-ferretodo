@@ -342,26 +342,52 @@ export async function sugerirProductosDestino(
     const tProd = `${quoteSchema(destino.schema_datos, permitidos)}."productos"`;
 
     const it = await c.query(
-      `SELECT i.id::text, i.sku_origen FROM ${TRF}.transferencia_items i
+      `SELECT i.id::text, i.sku_origen, i.nombre_origen FROM ${TRF}.transferencia_items i
          JOIN ${TRF}.transferencias t ON t.id = i.transferencia_id
         WHERE i.transferencia_id = $1::uuid AND t.empresa_destino_id = $2::uuid`,
       [id, empresaDestinoId]
     );
     const out: Record<string, { producto_id: string; nombre: string; sku: string | null } | null> = {};
-    for (const row of it.rows as unknown as Array<{ id: string; sku_origen: string | null }>) {
+    type Match = { id: string; nombre: string; sku: string | null };
+    for (const row of it.rows as unknown as Array<{ id: string; sku_origen: string | null; nombre_origen: string | null }>) {
       const sku = (row.sku_origen ?? "").trim();
-      if (!sku) { out[row.id] = null; continue; }
-      // Se busca por SKU O por código de barras: en el grupo el mismo código
-      // numérico suele estar guardado en ambos campos, y así se encuentra más seguido.
-      const m = await c.query(
-        `SELECT id::text, nombre, sku FROM ${tProd}
-          WHERE empresa_id = $1::uuid
-            AND (UPPER(TRIM(sku)) = UPPER($2) OR UPPER(TRIM(codigo_barras)) = UPPER($2))
-            AND activo LIMIT 1`,
-        [empresaDestinoId, sku]
-      );
-      out[row.id] = m.rows.length > 0
-        ? (m.rows[0] as unknown as { producto_id: string; nombre: string; sku: string | null })
+      const nombre = (row.nombre_origen ?? "").trim();
+      let hit: Match | null = null;
+
+      // 1) Match fuerte por SKU o código de barras exacto (grupo suele guardar el
+      // mismo código numérico en ambos campos).
+      if (sku) {
+        const m = await c.query(
+          `SELECT id::text, nombre, sku FROM ${tProd}
+            WHERE empresa_id = $1::uuid
+              AND (UPPER(TRIM(sku)) = UPPER($2) OR UPPER(TRIM(codigo_barras)) = UPPER($2))
+              AND activo LIMIT 1`,
+          [empresaDestinoId, sku]
+        );
+        if (m.rows.length > 0) hit = m.rows[0] as unknown as Match;
+      }
+
+      // 2) Fallback: match exacto por NOMBRE normalizado (upper + colapsar
+      // espacios). Evita duplicados cuando las empresas usan distinto SKU para
+      // el mismo producto. Solo match exacto normalizado: nunca fuzzy, para no
+      // sugerir productos incorrectos.
+      if (!hit && nombre.length >= 3) {
+        const m = await c.query(
+          `SELECT id::text, nombre, sku FROM ${tProd}
+            WHERE empresa_id = $1::uuid
+              AND REGEXP_REPLACE(UPPER(TRIM(COALESCE(nombre, ''))), '\\s+', ' ', 'g')
+                = REGEXP_REPLACE(UPPER(TRIM($2::text)), '\\s+', ' ', 'g')
+              AND activo LIMIT 1`,
+          [empresaDestinoId, nombre]
+        );
+        if (m.rows.length > 0) hit = m.rows[0] as unknown as Match;
+      }
+
+      // Mapeo correcto: el SELECT devuelve 'id', el contrato público pide
+      // 'producto_id'. Antes se castaba sin remapear y el frontend recibía
+      // producto_id=undefined → la sugerencia se perdía silenciosamente.
+      out[row.id] = hit
+        ? { producto_id: hit.id, nombre: hit.nombre, sku: hit.sku }
         : null;
     }
     return out;
