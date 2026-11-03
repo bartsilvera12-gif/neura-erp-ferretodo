@@ -121,6 +121,11 @@ export default function CuentaCorrientePage() {
     </div>
   );
 
+  // OJO: el saldo es NETO y puede estar a favor de esta empresa aunque tenga
+  // notas sin pagar (si la otra le transfirio mas de lo que le mando). El pago
+  // se habilita por las NOTAS pendientes, no por el neto: si no, un vendedor
+  // con notas vencidas no tenia forma de pagarlas.
+  const aPagar = c.notas_a_pagar.reduce((t, n) => t + n.saldo, 0);
   const debo = c.saldo > 0;
   const enCero = Math.abs(c.saldo) < 1;
   const inputC = "rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
@@ -152,6 +157,13 @@ export default function CuentaCorrientePage() {
         <p className="mt-2 text-xs text-slate-600">
           Recibiste {fmtGs(c.recibido)} en mercadería y entregaste {fmtGs(c.entregado)}. Pagaste {fmtGs(c.pagado)} y cobraste {fmtGs(c.cobrado)}.
         </p>
+        {aPagar > 0 && !debo && (
+          <p className="mt-2 rounded-md bg-white/70 px-2.5 py-1.5 text-xs text-slate-700">
+            Aun así tenés <strong>{c.notas_a_pagar.length}</strong>{" "}
+            {c.notas_a_pagar.length === 1 ? "nota sin pagar" : "notas sin pagar"} por <strong>{fmtGs(aPagar)}</strong>:
+            el saldo queda a tu favor porque {c.contraparte.nombre} te transfirió más, pero esas notas se pagan igual.
+          </p>
+        )}
       </div>
 
       {c.pagos_pendientes_confirmar > 0 && (
@@ -163,7 +175,7 @@ export default function CuentaCorrientePage() {
       {ok && <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{ok}</p>}
       {err && <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</p>}
 
-      {debo && (
+      {aPagar > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-bold text-slate-900">Registrar un pago</h2>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -192,8 +204,8 @@ export default function CuentaCorrientePage() {
               {busy ? "Registrando…" : "Registrar pago"}
             </button>
           </div>
-          <button onClick={() => setMonto(Math.round(c.saldo))} className="mt-2 text-xs text-[#3F8E91] hover:underline">
-            Pagar todo el saldo ({fmtGs(c.saldo)})
+          <button onClick={() => setMonto(aPagar)} className="mt-2 text-xs text-[#3F8E91] hover:underline">
+            Pagar todas las notas ({fmtGs(aPagar)})
           </button>
         </div>
       )}
