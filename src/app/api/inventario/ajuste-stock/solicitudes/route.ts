@@ -25,8 +25,10 @@ export async function GET(request: NextRequest) {
     const client = await ajustePool().connect();
     try {
       const { rows } = await client.query(
-        `SELECT id::text, producto_id::text, producto_nombre, producto_sku, tipo,
+        `SELECT id::text, producto_id::text, producto_nombre, producto_sku,
+                COALESCE(clase, 'stock') AS clase, tipo,
                 cantidad::float8 AS cantidad, origen, motivo, estado,
+                costo_anterior::float8 AS costo_anterior, costo_nuevo::float8 AS costo_nuevo,
                 solicitado_por_nombre, resuelto_por_nombre, resuelto_motivo,
                 created_at, resuelto_at
            FROM ${tS}

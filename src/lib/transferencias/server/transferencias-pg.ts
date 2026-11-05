@@ -524,15 +524,30 @@ export async function recibirTransferencia(
       }
       const pd = pQ.rows[0] as unknown as { nombre: string; sku: string | null };
 
-      // Entra al costo del origen: la transferencia es a costo, sin margen.
-      await client.query(
-        `UPDATE ${tProd}
-            SET stock_actual = stock_actual + $1::numeric,
-                costo_promedio = $2::numeric,
-                updated_at = now()
-          WHERE id = $3::uuid AND empresa_id = $4::uuid`,
-        [item.cantidad, item.costo_unitario, productoDestinoId, input.empresaDestinoId]
-      );
+      // Al recibir, SOLO se suma el stock. El costo del producto destino NO se
+      // toca cuando el producto YA EXISTE en el catálogo: pisarlo con el costo de
+      // origen alteraba silenciosamente el precio de costo de productos existentes
+      // en cada recepción (una modificación de costo que debe pasar por el admin).
+      // Un producto recién creado ya nació con el costo de origen en su INSERT, así
+      // que tampoco hace falta volver a escribirlo acá.
+      if (creado) {
+        await client.query(
+          `UPDATE ${tProd}
+              SET stock_actual = stock_actual + $1::numeric,
+                  costo_promedio = $2::numeric,
+                  updated_at = now()
+            WHERE id = $3::uuid AND empresa_id = $4::uuid`,
+          [item.cantidad, item.costo_unitario, productoDestinoId, input.empresaDestinoId]
+        );
+      } else {
+        await client.query(
+          `UPDATE ${tProd}
+              SET stock_actual = stock_actual + $1::numeric,
+                  updated_at = now()
+            WHERE id = $2::uuid AND empresa_id = $3::uuid`,
+          [item.cantidad, productoDestinoId, input.empresaDestinoId]
+        );
+      }
 
       await client.query(
         `INSERT INTO ${tMov}

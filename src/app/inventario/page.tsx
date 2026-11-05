@@ -8,6 +8,7 @@ import ExportExcelButton from "@/components/ui/ExportExcelButton";
 import ImportExcelButton from "@/components/ui/ImportExcelButton";
 import EdgeScrollArea from "@/components/ui/EdgeScrollArea";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
+import { SolicitudesAjustePanel } from "@/components/inventario/SolicitudesAjustePanel";
 import {
   Search,
   ChevronLeft,
@@ -232,6 +233,9 @@ export default function InventarioPage() {
           />
         </div>
       </header>
+
+      {/* Solicitudes pendientes de autorización (solo admin): stock y costo */}
+      <SolicitudesAjustePanel />
 
       {/* Tarjeta principal */}
       <section className="rounded-2xl border-2 border-[#4FAEB2]/20 bg-white shadow-[0_2px_10px_-2px_rgba(79,174,178,0.12)]">

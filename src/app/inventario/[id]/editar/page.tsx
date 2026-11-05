@@ -11,7 +11,9 @@ import type { MetodoValuacion } from "@/lib/inventario/types";
 import ProductImageUploader from "@/components/inventario/ProductImageUploader";
 import SelectFromList from "@/components/inventario/SelectFromList";
 import ProveedoresCostos from "@/components/inventario/ProveedoresCostos";
-import { ShoppingBag, Boxes, ClipboardList, type LucideIcon } from "lucide-react";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
+import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
+import { ShoppingBag, Boxes, ClipboardList, Lock, type LucideIcon } from "lucide-react";
 
 // Opciones estándar de unidad de medida (UX simplificada gastro)
 const UNIDADES_OPCIONES = [
@@ -32,6 +34,11 @@ export default function EditarProductoPage() {
   const router = useRouter();
   const params = useParams();
   const id = (params?.id as string) ?? "";
+  const { isAdmin } = useIsAdmin();
+
+  // Costo cargado originalmente (para no-admin: base de la solicitud de cambio).
+  const [costoInicial, setCostoInicial] = useState<number>(0);
+  const [solicitudCosto, setSolicitudCosto] = useState<{ enviando: boolean; msg: { ok: boolean; text: string } | null }>({ enviando: false, msg: null });
 
   const [cargando, setCargando] = useState(true);
   const [errorDuplicado, setErrorDuplicado] = useState<string | null>(null);
@@ -197,6 +204,7 @@ export default function EditarProductoPage() {
       if (cancelled || !p) return;
       const costo = p.costo_promedio;
       const precio = p.precio_venta;
+      setCostoInicial(Number(p.costo_promedio) || 0);
       // Treshold > 1: el import inicial uso costo=1 como placeholder. Con
       // costos <= 1 el markup sale absurdo (1.499.900% para precio 15k) y
       // confunde al usuario. Lo dejamos en blanco hasta que carguen un
@@ -306,6 +314,39 @@ export default function EditarProductoPage() {
       setForm((prev) => ({ ...prev, costo_promedio: String(costo), markup: nuevoMarkup.toFixed(2), margen: nuevoMargen.toFixed(2) }));
     } else {
       setForm((prev) => ({ ...prev, costo_promedio: String(costo), markup: "", margen: "" }));
+    }
+  }
+
+  // No-admin: pide autorización para cambiar el costo de un producto existente.
+  // Envía el costo escrito en el formulario como costo solicitado.
+  async function solicitarCambioCosto() {
+    const costoNuevo = parseFloat(form.costo_promedio);
+    if (isNaN(costoNuevo) || costoNuevo < 0) {
+      setSolicitudCosto({ enviando: false, msg: { ok: false, text: "Ingresá un costo válido para solicitar." } });
+      return;
+    }
+    if (costoNuevo === costoInicial) {
+      setSolicitudCosto({ enviando: false, msg: { ok: false, text: "El costo es el mismo que el actual. Cambiá el valor para solicitar." } });
+      return;
+    }
+    const motivo = window.prompt("Motivo del cambio de costo (opcional):") ?? "";
+    setSolicitudCosto({ enviando: true, msg: null });
+    try {
+      const res = await fetchWithSupabaseSession("/api/inventario/costo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ producto_id: id, costo_nuevo: costoNuevo, motivo: motivo.trim() || null }),
+      });
+      const j = await res.json();
+      if (!res.ok || j?.success === false) {
+        setSolicitudCosto({ enviando: false, msg: { ok: false, text: j?.error ?? "No se pudo enviar la solicitud." } });
+        return;
+      }
+      // Revertir el campo al costo actual: el nuevo costo recién aplica cuando el admin aprueba.
+      setForm((prev) => ({ ...prev, costo_promedio: String(costoInicial) }));
+      setSolicitudCosto({ enviando: false, msg: { ok: true, text: "Solicitud enviada al administrador. El costo cambiará cuando la apruebe." } });
+    } catch {
+      setSolicitudCosto({ enviando: false, msg: { ok: false, text: "Error de red. Intentá de nuevo." } });
     }
   }
 
@@ -1013,7 +1054,14 @@ export default function EditarProductoPage() {
             </p>
             <div className={`grid grid-cols-1 gap-6 ${showPrecioVenta ? "sm:grid-cols-3" : ""}`}>
               <div>
-                <label className={labelClass}>{showPrecioVenta ? "Costo promedio (Gs.)" : "Costo promedio / adquisición (Gs.)"}</label>
+                <label className={labelClass}>
+                  {showPrecioVenta ? "Costo promedio (Gs.)" : "Costo promedio / adquisición (Gs.)"}
+                  {!isAdmin && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      <Lock className="h-3 w-3" /> requiere autorización
+                    </span>
+                  )}
+                </label>
                 <MontoInput
                   value={form.costo_promedio}
                   onChange={handleCostoChange}
@@ -1032,6 +1080,29 @@ export default function EditarProductoPage() {
                   }
                   return null;
                 })()}
+                {/* No-admin: el costo de un producto existente no se guarda con el
+                    botón normal. Se pide autorización al admin. */}
+                {!isAdmin && (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-[11px] text-slate-500">
+                      Solo el administrador puede cambiar el precio de costo de un producto ya cargado.
+                      Escribí el nuevo costo y pedí autorización; se aplicará cuando el admin lo apruebe.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void solicitarCambioCosto()}
+                      disabled={solicitudCosto.enviando || parseFloat(form.costo_promedio) === costoInicial}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                    >
+                      {solicitudCosto.enviando ? "Enviando…" : "Solicitar cambio de costo"}
+                    </button>
+                    {solicitudCosto.msg && (
+                      <p className={`text-[11px] ${solicitudCosto.msg.ok ? "text-emerald-700" : "text-red-600"}`}>
+                        {solicitudCosto.msg.text}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               {showPrecioVenta && (
               <div>

@@ -7,6 +7,7 @@ import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema"
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
 import { quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { ajustePool, aplicarMovimientoStock, type TipoAjuste } from "@/lib/inventario/server/ajuste-stock-pg";
+import { aplicarCambioCosto } from "@/lib/inventario/server/ajuste-costo-pg";
 
 /**
  * POST /api/inventario/ajuste-stock/solicitudes/[id]  (solo admin)
@@ -38,8 +39,10 @@ export async function POST(request: NextRequest, ctxParams: { params: Promise<{ 
     try {
       await client.query("BEGIN");
       const { rows } = await client.query(
-        `SELECT id::text, producto_id::text, producto_nombre, producto_sku, tipo,
-                cantidad::float8 AS cantidad, origen, costo_unitario::float8 AS costo_unitario, motivo, estado
+        `SELECT id::text, producto_id::text, producto_nombre, producto_sku,
+                COALESCE(clase, 'stock') AS clase, tipo,
+                cantidad::float8 AS cantidad, origen, costo_unitario::float8 AS costo_unitario,
+                costo_nuevo::float8 AS costo_nuevo, motivo, estado
            FROM ${tS}
           WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
         [id, empresaId]
@@ -51,20 +54,26 @@ export async function POST(request: NextRequest, ctxParams: { params: Promise<{ 
         return NextResponse.json(errorResponse("La solicitud ya fue resuelta."), { status: 409 });
       }
 
+      const clase = String(s.clase ?? "stock");
       let movimientoId: string | null = null;
       if (accion === "aprobar") {
-        movimientoId = await aplicarMovimientoStock(client, schema, empresaId, {
-          producto_id: String(s.producto_id),
-          producto_nombre: String(s.producto_nombre ?? ""),
-          producto_sku: String(s.producto_sku ?? ""),
-          tipo: String(s.tipo) as TipoAjuste,
-          cantidad: Number(s.cantidad),
-          costo_unitario: Number(s.costo_unitario) || 0,
-          origen: String(s.origen ?? "ajuste_manual"),
-          referencia: (s.motivo as string | null) ?? null,
-          created_by: usuarioId,
-          usuario_nombre: usuarioNombre,
-        });
+        if (clase === "costo") {
+          // Aplica el nuevo costo al producto. No genera movimiento de stock.
+          await aplicarCambioCosto(client, schema, empresaId, String(s.producto_id), Number(s.costo_nuevo) || 0);
+        } else {
+          movimientoId = await aplicarMovimientoStock(client, schema, empresaId, {
+            producto_id: String(s.producto_id),
+            producto_nombre: String(s.producto_nombre ?? ""),
+            producto_sku: String(s.producto_sku ?? ""),
+            tipo: String(s.tipo) as TipoAjuste,
+            cantidad: Number(s.cantidad),
+            costo_unitario: Number(s.costo_unitario) || 0,
+            origen: String(s.origen ?? "ajuste_manual"),
+            referencia: (s.motivo as string | null) ?? null,
+            created_by: usuarioId,
+            usuario_nombre: usuarioNombre,
+          });
+        }
       }
 
       await client.query(

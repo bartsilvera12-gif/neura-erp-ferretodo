@@ -7,10 +7,13 @@ import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
 type Solicitud = {
   id: string;
+  clase?: "stock" | "costo";
   producto_nombre: string;
   producto_sku: string | null;
-  tipo: "ENTRADA" | "SALIDA" | "AJUSTE";
-  cantidad: number;
+  tipo: "ENTRADA" | "SALIDA" | "AJUSTE" | null;
+  cantidad: number | null;
+  costo_anterior: number | null;
+  costo_nuevo: number | null;
   motivo: string | null;
   solicitado_por_nombre: string | null;
   created_at: string;
@@ -18,6 +21,9 @@ type Solicitud = {
 
 function fmtFechaHora(iso: string): string {
   try { return new Date(iso).toLocaleString("es-PY"); } catch { return iso; }
+}
+function fmtGs(n: number | null): string {
+  return `Gs. ${Math.round(Number(n) || 0).toLocaleString("es-PY")}`;
 }
 
 /**
@@ -58,7 +64,7 @@ export function SolicitudesAjustePanel({ onCambio }: { onCambio?: () => void }) 
         setTimeout(() => setToast(null), 3000);
         return;
       }
-      setToast(accion === "aprobar" ? "Solicitud aprobada — stock actualizado" : "Solicitud rechazada");
+      setToast(accion === "aprobar" ? "Solicitud aprobada y aplicada" : "Solicitud rechazada");
       setTimeout(() => setToast(null), 2800);
       await cargar();
       onCambio?.();
@@ -82,7 +88,7 @@ export function SolicitudesAjustePanel({ onCambio }: { onCambio?: () => void }) 
       <div className="mb-3 flex items-center gap-2">
         <ClipboardList className="h-4 w-4 text-amber-700" />
         <h3 className="text-sm font-semibold text-amber-900">
-          Solicitudes de ajuste de stock pendientes {solicitudes.length > 0 && `(${solicitudes.length})`}
+          Solicitudes pendientes de autorización {solicitudes.length > 0 && `(${solicitudes.length})`}
         </h3>
       </div>
       {cargando ? (
@@ -97,7 +103,13 @@ export function SolicitudesAjustePanel({ onCambio }: { onCambio?: () => void }) 
                   {s.producto_sku ? <span className="ml-1 text-xs text-slate-400">{s.producto_sku}</span> : null}
                 </p>
                 <p className="text-xs text-slate-600">
-                  <span className={`font-semibold ${s.tipo === "ENTRADA" ? "text-emerald-700" : s.tipo === "SALIDA" ? "text-red-600" : "text-amber-700"}`}>{s.tipo} {s.cantidad}</span>
+                  {s.clase === "costo" ? (
+                    <span className="font-semibold text-sky-700">
+                      Cambio de costo: {fmtGs(s.costo_anterior)} → {fmtGs(s.costo_nuevo)}
+                    </span>
+                  ) : (
+                    <span className={`font-semibold ${s.tipo === "ENTRADA" ? "text-emerald-700" : s.tipo === "SALIDA" ? "text-red-600" : "text-amber-700"}`}>{s.tipo} {s.cantidad}</span>
+                  )}
                   {" · "}Solicitado por <span className="font-medium">{s.solicitado_por_nombre ?? "—"}</span>
                   {" · "}{fmtFechaHora(s.created_at)}
                 </p>

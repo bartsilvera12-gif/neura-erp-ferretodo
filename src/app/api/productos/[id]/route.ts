@@ -97,7 +97,12 @@ export async function PATCH(
     const patch: Record<string, unknown> = {};
     if (body.nombre !== undefined) patch.nombre = normalizeUpperText(body.nombre);
     if (body.sku !== undefined) patch.sku = normalizeUpperText(body.sku);
-    if (body.costo_promedio !== undefined) patch.costo_promedio = Number(body.costo_promedio) || 0;
+    // El precio de COSTO de un producto existente solo lo cambia el admin directo.
+    // Un no-admin debe usar "Solicitar cambio de costo" (crea una solicitud para
+    // que el admin apruebe); acá se ignora su cambio de costo para no saltear la
+    // autorización. El costo se carga libremente en el alta del producto y al
+    // ingresar mercadería del proveedor (Compras), no por este PATCH.
+    if (body.costo_promedio !== undefined && isAdmin(ctx.auth)) patch.costo_promedio = Number(body.costo_promedio) || 0;
     if (body.precio_venta !== undefined) patch.precio_venta = Number(body.precio_venta) || 0;
     // El stock solo lo modifica el admin directo. Un no-admin debe usar
     // Inventario → Movimientos (que crea una solicitud para que el admin apruebe);
