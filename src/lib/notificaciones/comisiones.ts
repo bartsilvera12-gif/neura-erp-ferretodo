@@ -1,21 +1,27 @@
 /**
  * Notificaciones de comisiones para Ferretodo.
  *
- * Ferretodo comisiona un 5% PLANO sobre la ganancia (sin tramos), asi que no hay
- * umbrales que "desbloquear": el aviso de cruce de tramo queda desactivado y solo
- * se usa el cierre mensual.
+ * Ferretodo comisiona 5% PLANO sobre la ganancia (sin tramos), con overrides
+ * por vendedor/mes en comision_periodo_vendedor. No hay umbrales que cruzar,
+ * asi que solo se usa el cierre mensual.
  *
- *  - Cierre mensual: el día 1 de cada mes, se registra un aviso con las
- *    comisiones totales del mes anterior por vendedor.
+ * Fuente de verdad del calculo: src/lib/comisiones/ferretodo-calcular.ts.
+ * Esta funcion y la pantalla /comisiones usan exactamente la misma funcion
+ * para que los montos nunca se desincronicen.
  *
- * Ambas insertan en la tabla `notificaciones` (misma que usa la campanita).
- * Dedupe: (empresa, tipo, mensaje) con ON CONFLICT DO NOTHING, para evitar spam.
+ * Dedupe: antes de insertar, se verifica si ya existe una notificacion con el
+ * mismo tipo (que incluye el mes YYYY-MM-DD) para la empresa. Esto NO depende
+ * del indice unico parcial existente (que cubre solo filas con producto_id).
  */
+import type { AppSupabaseClient } from "@/lib/supabase/schema";
 import { getChatPostgresPool, quoteSchemaTable } from "@/lib/supabase/chat-pg-pool";
 import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import {
+  calcularComisionesFerretodo,
+  mesAnteriorEnAsuncion,
+  diaDelMesEnAsuncion,
+} from "@/lib/comisiones/ferretodo-calcular";
 
-/** Ferretodo: 5% plano sobre la ganancia (sin tramos). */
-const PORCENTAJE_COMISION = 5;
 const TIPO_MENSUAL = "comision_mensual";
 
 function pool() {
@@ -24,57 +30,9 @@ function pool() {
   return p;
 }
 
-function pyMonthBounds(offsetMonths = 0): { desde: string; hasta: string; label: string } {
-  const hoy = new Date();
-  const anio = hoy.getFullYear();
-  const mes = hoy.getMonth() + offsetMonths;
-  const first = new Date(anio, mes, 1);
-  const last = new Date(anio, mes + 1, 0);
-  const y = first.getFullYear();
-  const m = String(first.getMonth() + 1).padStart(2, "0");
-  const lastD = String(last.getDate()).padStart(2, "0");
-  const label = first.toLocaleDateString("es-PY", { month: "long", year: "numeric" });
-  return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${lastD}`, label };
-}
-
 /**
- * Devuelve la ganancia acumulada del mes actual por vendedor.
- * Ganancia = ventas.total - Σ(cantidad * costo_unitario) de movimientos SALIDA activos.
- */
-async function gananciaPorVendedor(
-  schema: string,
-  empresaId: string,
-  desde: string,
-  hasta: string
-): Promise<Map<string, number>> {
-  const tV = quoteSchemaTable(schema, "ventas");
-  const tM = quoteSchemaTable(schema, "movimientos_inventario");
-  const { rows } = await pool().query<{ vendedor: string; ganancia: string }>(
-    `SELECT COALESCE(v.usuario_nombre, 'Sin vendedor') AS vendedor,
-            SUM(v.total - COALESCE(costos.costo, 0))::text AS ganancia
-       FROM ${tV} v
-       LEFT JOIN (
-         SELECT venta_id, SUM(cantidad * costo_unitario) AS costo
-           FROM ${tM}
-          WHERE empresa_id = $1::uuid AND tipo = 'SALIDA' AND anulado_at IS NULL
-          GROUP BY venta_id
-       ) costos ON costos.venta_id = v.id
-      WHERE v.empresa_id = $1::uuid
-        AND v.estado NOT IN ('anulada', 'devuelta_total')
-        AND v.fecha >= $2::date
-        AND v.fecha < ($3::date + INTERVAL '1 day')
-      GROUP BY v.usuario_nombre`,
-    [empresaId, desde, hasta]
-  );
-  const m = new Map<string, number>();
-  for (const r of rows) m.set(r.vendedor, Number(r.ganancia) || 0);
-  return m;
-}
-
-/**
- * (A) Evalúa cruces de tramo. Se llama después de crear una venta.
- * Compara la ganancia ANTES y DESPUÉS de la venta con los umbrales; si cruzó
- * uno, inserta una notificación (con dedupe por umbral+mes).
+ * (A) Evaluar cruces de tramo. Ferretodo tiene 5% plano, asi que no hay
+ * tramos que cruzar. Se mantiene la firma para no tocar los callers.
  */
 export async function evaluarCruceTramoComision(
   _schemaRaw: string,
@@ -82,51 +40,66 @@ export async function evaluarCruceTramoComision(
   _vendedorNombre: string,
   _ventaTotal: number
 ): Promise<void> {
-  // Ferretodo comisiona 5% plano: no existen tramos que cruzar, asi que no se
-  // emite ninguna notificacion. Se mantiene la firma para no tocar el caller.
   return;
 }
 
 /**
- * (B) Aviso mensual: el día 1 de cada mes crea (una vez) el resumen de
- * comisiones del mes anterior. Best-effort, se puede llamar desde el GET
- * de notificaciones (throttled a nivel proceso).
+ * (B) Aviso mensual: durante los dias 1 a 5 (en zona America/Asuncion), crea
+ * un unico aviso con las comisiones del mes anterior. Idempotente: si ya
+ * existe un aviso del mismo mes para la empresa, no crea otro.
+ *
+ * Se llama best-effort desde el GET de notificaciones.
  */
-const ultimaEvalMensual = new Map<string, number>();
-const THROTTLE_MS = 60 * 60 * 1000; // 1h
-
-export async function evaluarComisionesMensuales(schemaRaw: string, empresaId: string): Promise<void> {
-  const ahora = Date.now();
-  const last = ultimaEvalMensual.get(empresaId) ?? 0;
-  if (ahora - last < THROTTLE_MS) return;
-  ultimaEvalMensual.set(empresaId, ahora);
-
-  const hoy = new Date();
-  // Solo generar durante los primeros 5 dias del mes, para que se muestre
-  // el resumen del mes recien terminado.
-  if (hoy.getDate() > 5) return;
+export async function evaluarComisionesMensuales(
+  schemaRaw: string,
+  empresaId: string,
+  sb: AppSupabaseClient
+): Promise<void> {
+  // Solo durante los primeros 5 dias del mes en zona America/Asuncion
+  const dia = diaDelMesEnAsuncion();
+  if (dia > 5) return;
 
   const schema = assertAllowedChatDataSchema(schemaRaw);
-  const { desde, hasta, label } = pyMonthBounds(-1);
-  const totales = await gananciaPorVendedor(schema, empresaId, desde, hasta);
-  if (totales.size === 0) return;
+  const { desde, hasta, label } = mesAnteriorEnAsuncion();
 
-  let totalComision = 0;
-  const lineas: string[] = [];
-  for (const [vend, gan] of totales) {
-    const com = Math.round((gan * PORCENTAJE_COMISION) / 100);
-    totalComision += com;
-    if (com > 0) lineas.push(`${vend}: ${new Intl.NumberFormat("es-PY").format(com)}`);
-  }
-  if (totalComision <= 0) return;
+  const tipoMes = `${TIPO_MENSUAL}_${desde}`; // ej: comision_mensual_2026-10-01
+  const t = quoteSchemaTable(schema, "notificaciones");
+
+  // Dedupe por SELECT antes de insertar. El indice unico parcial existente
+  // solo cubre filas con producto_id (la de comisiones no tiene), por eso
+  // ON CONFLICT DO NOTHING no alcanza.
+  const existe = await pool().query<{ id: string }>(
+    `SELECT id FROM ${t}
+      WHERE empresa_id = $1::uuid AND tipo = $2
+      LIMIT 1`,
+    [empresaId, tipoMes]
+  );
+  if (existe.rows.length > 0) return;
+
+  // Calculo UNICO y COMPARTIDO con /api/comisiones/ferretodo
+  const data = await calcularComisionesFerretodo(sb, empresaId, desde, hasta);
+  if (data.por_vendedor.length === 0) return;
+  if (data.totales.comision <= 0) return;
+
+  const nf = new Intl.NumberFormat("es-PY");
+  const lineas = data.por_vendedor
+    .filter((f) => f.comision > 0)
+    .map((f) => `${f.vendedor}: ${nf.format(f.comision)}`);
+
+  const todasRetenidas = data.por_vendedor.every((f) => f.estado === "retenida");
+  const prefijo = todasRetenidas ? "Total del mes (sujeto a liberacion)" : "Total a pagar";
 
   const titulo = `Comisiones ${label}`;
-  const mensaje = `Total a pagar: Gs. ${new Intl.NumberFormat("es-PY").format(totalComision)}. ${lineas.join(" · ")}`;
-  const t = quoteSchemaTable(schema, "notificaciones");
+  const mensaje = `${prefijo}: Gs. ${nf.format(data.totales.comision)}. ${lineas.join(" · ")}`;
+
+  // Doble seguro: SELECT + INSERT corre en concurrencia muy baja (1 request
+  // por request de campanita, con throttle de proceso en otra capa), pero
+  // dejamos ON CONFLICT DO NOTHING para no romper si el indice existe mas
+  // adelante.
   await pool().query(
     `INSERT INTO ${t} (empresa_id, tipo, titulo, mensaje, url)
      VALUES ($1::uuid, $2, $3, $4, '/comisiones')
      ON CONFLICT DO NOTHING`,
-    [empresaId, `${TIPO_MENSUAL}_${desde}`, titulo, mensaje]
+    [empresaId, tipoMes, titulo, mensaje]
   );
 }
