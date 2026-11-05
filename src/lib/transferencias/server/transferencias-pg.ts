@@ -515,23 +515,35 @@ export async function recibirTransferencia(
       }
 
       const pQ = await client.query(
-        `SELECT id::text, nombre, sku FROM ${tProd}
+        `SELECT id::text, nombre, sku, stock_actual::float8 AS stock, costo_promedio::float8 AS costo
+           FROM ${tProd}
           WHERE id = $1::uuid AND empresa_id = $2::uuid FOR UPDATE`,
         [productoDestinoId, input.empresaDestinoId]
       );
       if (pQ.rows.length === 0) {
         throw new TransferenciaError(`El producto asignado a "${item.nombre_origen}" no existe en esta empresa.`, 404);
       }
-      const pd = pQ.rows[0] as unknown as { nombre: string; sku: string | null };
+      const pd = pQ.rows[0] as unknown as { nombre: string; sku: string | null; stock: number; costo: number };
 
-      // Entra al costo del origen: la transferencia es a costo, sin margen.
+      // El costo entra al valor del origen (la transferencia es a costo). Para un
+      // producto que YA tenía stock, NO se pisa su costo: se promedia (CPP), igual
+      // que una compra. Un producto nuevo o sin stock/costo previo toma directo el
+      // costo del origen. Así una recepción nunca destruye el costo histórico.
+      const stockPrevio = Number(pd.stock) || 0;
+      const costoPrevio = Number(pd.costo) || 0;
+      const costoOrigen = Number(item.costo_unitario) || 0;
+      const nuevoCosto =
+        creado || stockPrevio <= 0 || costoPrevio <= 0
+          ? costoOrigen
+          : (stockPrevio * costoPrevio + item.cantidad * costoOrigen) / (stockPrevio + item.cantidad);
+
       await client.query(
         `UPDATE ${tProd}
             SET stock_actual = stock_actual + $1::numeric,
                 costo_promedio = $2::numeric,
                 updated_at = now()
           WHERE id = $3::uuid AND empresa_id = $4::uuid`,
-        [item.cantidad, item.costo_unitario, productoDestinoId, input.empresaDestinoId]
+        [item.cantidad, nuevoCosto, productoDestinoId, input.empresaDestinoId]
       );
 
       await client.query(

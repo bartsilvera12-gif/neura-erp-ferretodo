@@ -97,7 +97,10 @@ export async function PATCH(
     const patch: Record<string, unknown> = {};
     if (body.nombre !== undefined) patch.nombre = normalizeUpperText(body.nombre);
     if (body.sku !== undefined) patch.sku = normalizeUpperText(body.sku);
-    if (body.costo_promedio !== undefined) patch.costo_promedio = Number(body.costo_promedio) || 0;
+    // El precio de costo solo lo modifica el admin desde la ficha del producto.
+    // Un no-admin lo puede cargar al momento de ingresar la compra (flujo de compras),
+    // pero una vez guardada la factura ya no puede editarlo acá: se ignora su cambio.
+    if (body.costo_promedio !== undefined && isAdmin(ctx.auth)) patch.costo_promedio = Number(body.costo_promedio) || 0;
     if (body.precio_venta !== undefined) patch.precio_venta = Number(body.precio_venta) || 0;
     // El stock solo lo modifica el admin directo. Un no-admin debe usar
     // Inventario → Movimientos (que crea una solicitud para que el admin apruebe);

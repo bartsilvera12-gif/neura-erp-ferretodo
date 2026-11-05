@@ -11,7 +11,8 @@ import type { MetodoValuacion } from "@/lib/inventario/types";
 import ProductImageUploader from "@/components/inventario/ProductImageUploader";
 import SelectFromList from "@/components/inventario/SelectFromList";
 import ProveedoresCostos from "@/components/inventario/ProveedoresCostos";
-import { ShoppingBag, Boxes, ClipboardList, type LucideIcon } from "lucide-react";
+import { useIsAdmin } from "@/lib/auth/use-is-admin";
+import { ShoppingBag, Boxes, ClipboardList, Lock, type LucideIcon } from "lucide-react";
 
 // Opciones estándar de unidad de medida (UX simplificada gastro)
 const UNIDADES_OPCIONES = [
@@ -33,6 +34,7 @@ export default function EditarProductoPage() {
   const params = useParams();
   const id = (params?.id as string) ?? "";
 
+  const { isAdmin } = useIsAdmin();
   const [cargando, setCargando] = useState(true);
   const [errorDuplicado, setErrorDuplicado] = useState<string | null>(null);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
@@ -1013,15 +1015,24 @@ export default function EditarProductoPage() {
             </p>
             <div className={`grid grid-cols-1 gap-6 ${showPrecioVenta ? "sm:grid-cols-3" : ""}`}>
               <div>
-                <label className={labelClass}>{showPrecioVenta ? "Costo promedio (Gs.)" : "Costo promedio / adquisición (Gs.)"}</label>
+                <label className={`${labelClass} flex items-center gap-1.5`}>
+                  {showPrecioVenta ? "Costo promedio (Gs.)" : "Costo promedio / adquisición (Gs.)"}
+                  {!isAdmin && <Lock className="h-3.5 w-3.5 text-slate-400" aria-label="Solo el administrador puede editar el costo" />}
+                </label>
                 <MontoInput
                   value={form.costo_promedio}
                   onChange={handleCostoChange}
-                  className={inputClass}
+                  className={`${inputClass} ${!isAdmin ? "bg-slate-100 text-slate-500 cursor-not-allowed" : ""}`}
                   decimals={false}
                   required
+                  disabled={!isAdmin}
+                  title={!isAdmin ? "El precio de costo solo lo puede modificar el administrador." : undefined}
                 />
-                {(() => {
+                {!isAdmin ? (
+                  <p className="mt-1.5 text-[11px] text-slate-500">
+                    El precio de costo se carga al ingresar la compra. Una vez guardada la factura, solo el administrador puede modificarlo.
+                  </p>
+                ) : (() => {
                   const c = parseFloat(form.costo_promedio);
                   if (!isNaN(c) && c > 0 && c <= 1) {
                     return (

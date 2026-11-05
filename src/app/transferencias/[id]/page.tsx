@@ -62,27 +62,23 @@ export default function TransferenciaDetallePage() {
       const s = (j.data.sugerencias ?? {}) as Record<string, Sugerencia>;
       setTrf(t);
       setSug(s);
-      // Precarga: si el código ya existe en este catálogo se propone ese
-      // producto; si no, se propone crearlo con el mismo código y nombre.
+      // NINGUNA línea arranca con producto asignado: aunque el código coincida con
+      // uno del catálogo, el que recibe tiene que buscar y elegir (o crear) a
+      // propósito antes de poder confirmar. Así se evita que, apurado en una venta,
+      // acepte sin querer y el stock/costo caiga en el producto equivocado. La
+      // sugerencia por código se muestra como atajo de un clic, pero no se aplica sola.
       const inicial: Record<string, Asignacion> = {};
       for (const it of t.items ?? []) {
-        const m = s[it.id];
-        // Si hay match, se propone ese producto ya seleccionado. Si no, arranca en
-        // "Usar existente" con el buscador vacío (empuja a elegir el que ya existe
-        // antes de crear un duplicado); el nombre queda listo por si hay que crearlo.
-        inicial[it.id] = m
-          ? { modo: "existente", producto_id: m.producto_id, sku: m.sku ?? "", nombre: m.nombre }
-          : { modo: "existente", producto_id: "", sku: it.sku_origen ?? "", nombre: it.nombre_origen };
+        inicial[it.id] = { modo: "existente", producto_id: "", sku: it.sku_origen ?? "", nombre: it.nombre_origen };
       }
       setAsig(inicial);
-      // Para ítems sin sugerencia, precargamos el buscador con el nombre de origen y
-      // disparamos una búsqueda inicial. Así "Usar existente" muestra candidatos sin
-      // que el usuario tenga que escribir, evitando que piense que la opción no sirve.
+      // Precargamos el buscador de cada línea con el nombre de origen y disparamos
+      // una búsqueda inicial, así "Usar existente" muestra candidatos sin que el
+      // usuario tenga que escribir (incluido el sugerido, que además tiene su atajo).
       if (t.rol === "destino" && t.estado === "pendiente") {
         const busqInicial: Record<string, string> = {};
         const faltantes: Array<{ itemId: string; q: string }> = [];
         for (const it of t.items ?? []) {
-          if (s[it.id]) continue;
           const q = (it.nombre_origen ?? "").trim();
           if (q.length < 2) continue;
           busqInicial[it.id] = q;
@@ -210,6 +206,15 @@ export default function TransferenciaDetallePage() {
   const puedeRecibir = trf.rol === "destino" && trf.estado === "pendiente";
   const puedeCancelar = trf.estado === "pendiente";
   const inputC = "rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[#4FAEB2]/30";
+  // No se puede confirmar hasta que CADA línea tenga un producto asignado a propósito:
+  // uno existente elegido en el buscador, o uno nuevo con nombre. Evita aceptar sin querer.
+  const faltanAsignar = trf.items.filter((it) => {
+    const a = asig[it.id];
+    if (!a) return true;
+    if (a.modo === "existente") return !a.producto_id;
+    return !a.nombre.trim();
+  }).length;
+  const todoAsignado = faltanAsignar === 0;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -236,7 +241,7 @@ export default function TransferenciaDetallePage() {
 
       {puedeRecibir && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Esta mercadería está en tránsito. Asigná cada producto a tu catálogo y confirmá para que sume al stock de {trf.nombre_destino}.
+          Esta mercadería está en tránsito. <strong>Buscá y asigná cada producto</strong> de tu catálogo (o creá uno nuevo) antes de confirmar. Recién cuando estén todos asignados se habilita la recepción, para no aceptar sin querer sobre un producto equivocado.
         </p>
       )}
 
@@ -298,6 +303,13 @@ export default function TransferenciaDetallePage() {
                                 <input value={busq[it.id] ?? ""} placeholder="Buscar producto por nombre, SKU o código…"
                                   onChange={(e) => void buscarProductoDestino(it.id, e.target.value)}
                                   className={`${inputC} w-72`} />
+                                {s && (
+                                  <button type="button"
+                                    onClick={() => elegirProductoExistente(it.id, { id: s.producto_id, nombre: s.nombre, sku: s.sku })}
+                                    className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700 hover:bg-sky-100">
+                                    Sugerido por código: {s.nombre} — usar este
+                                  </button>
+                                )}
                                 {buscando === it.id && <p className="text-[11px] text-slate-400">Buscando…</p>}
                                 {(resBusq[it.id] ?? []).length > 0 && (
                                   <ul className="max-h-44 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm">
@@ -341,7 +353,12 @@ export default function TransferenciaDetallePage() {
       {err && <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</p>}
 
       {(puedeRecibir || puedeCancelar) && (
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {puedeRecibir && !todoAsignado && (
+            <span className="mr-auto text-xs font-medium text-amber-700">
+              Falta asignar {faltanAsignar} producto{faltanAsignar === 1 ? "" : "s"} antes de confirmar.
+            </span>
+          )}
           {puedeCancelar && (
             <button onClick={() => void cancelar()} disabled={accion}
               className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50">
@@ -349,8 +366,9 @@ export default function TransferenciaDetallePage() {
             </button>
           )}
           {puedeRecibir && (
-            <button onClick={() => void recibir()} disabled={accion}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50">
+            <button onClick={() => void recibir()} disabled={accion || !todoAsignado}
+              title={!todoAsignado ? "Asigná todos los productos antes de confirmar." : undefined}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#4FAEB2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50 disabled:cursor-not-allowed">
               {accion ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Confirmar recepción
             </button>
