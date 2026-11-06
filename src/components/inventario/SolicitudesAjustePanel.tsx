@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Check, X, ClipboardList } from "lucide-react";
+import { Check, X, ClipboardList } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { useIsAdmin } from "@/lib/auth/use-is-admin";
 
@@ -27,18 +27,15 @@ function fmtFechaHora(iso: string): string {
 export function SolicitudesAjustePanel({ onCambio }: { onCambio?: () => void }) {
   const { isAdmin, loaded } = useIsAdmin();
   const [solicitudes, setSolicitudes] = useState<Solicitud[]>([]);
-  const [cargando, setCargando] = useState(true);
   const [procesando, setProcesando] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
-    setCargando(true);
     try {
       const res = await fetchWithSupabaseSession("/api/inventario/ajuste-stock/solicitudes?estado=pendiente", { cache: "no-store" });
       const j = await res.json();
       if (res.ok && j?.success !== false) setSolicitudes((j.data?.solicitudes ?? []) as Solicitud[]);
     } catch { /* noop */ }
-    finally { setCargando(false); }
   }, []);
 
   useEffect(() => { if (isAdmin) void cargar(); }, [isAdmin, cargar]);
@@ -70,9 +67,11 @@ export function SolicitudesAjustePanel({ onCambio }: { onCambio?: () => void }) 
     }
   }
 
-  // Solo admin. Si no hay pendientes, no ocupa espacio.
+  // Solo admin. El panel aparece ÚNICAMENTE cuando hay solicitudes pendientes:
+  // mientras consulta (o si no hay ninguna) no se muestra nada, para no dejar el
+  // cartel "Cargando…" colgado, que confunde y molesta.
   if (!loaded || !isAdmin) return null;
-  if (!cargando && solicitudes.length === 0) return null;
+  if (solicitudes.length === 0) return null;
 
   return (
     <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 shadow-sm">
@@ -85,11 +84,8 @@ export function SolicitudesAjustePanel({ onCambio }: { onCambio?: () => void }) 
           Solicitudes de ajuste de stock pendientes {solicitudes.length > 0 && `(${solicitudes.length})`}
         </h3>
       </div>
-      {cargando ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
-      ) : (
-        <div className="space-y-2">
-          {solicitudes.map((s) => (
+      <div className="space-y-2">
+        {solicitudes.map((s) => (
             <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2.5">
               <div className="min-w-0 flex-1 text-sm">
                 <p className="font-medium text-slate-800">
@@ -116,7 +112,6 @@ export function SolicitudesAjustePanel({ onCambio }: { onCambio?: () => void }) 
             </div>
           ))}
         </div>
-      )}
     </section>
   );
 }
