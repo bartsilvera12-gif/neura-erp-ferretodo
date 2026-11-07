@@ -6,6 +6,7 @@ import { createGasto, updateGasto, getGastos } from "@/lib/gastos/actions";
 import MontoInput from "@/components/ui/MontoInput";
 import type { Gasto, GastoInput } from "@/lib/gastos/actions";
 import { hoyAsuncionYmd } from "@/lib/fecha/asuncion";
+import { esGastoSalario } from "@/lib/gastos/salarios";
 import { Repeat, Search } from "lucide-react";
 
 const fLabel = "block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1";
@@ -31,7 +32,14 @@ export default function GastoForm({ gasto, onSuccess }: Props) {
     frecuencia: gasto?.frecuencia ?? "",
     fecha: gasto?.fecha ?? hoyAsuncionYmd(),
     descuenta_caja: gasto?.descuenta_caja ?? false,
+    funcionario: gasto?.funcionario ?? "",
+    funcionario_ci: gasto?.funcionario_ci ?? "",
+    periodo: gasto?.periodo ?? "",
   });
+
+  // Mostrar los datos de salario cuando la categoría indica un sueldo/salario
+  // (mismo criterio que usa el reporte de salarios).
+  const esSalario = esGastoSalario({ categoria: form.categoria });
 
   // Historico de gastos: para permitir reutilizar (recurrentes y frecuentes)
   const [historial, setHistorial] = useState<Gasto[]>([]);
@@ -272,6 +280,51 @@ export default function GastoForm({ gasto, onSuccess }: Props) {
               required
             />
           </div>
+
+          {esSalario && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-800">
+                Datos de salario (para el reporte por funcionario y el recibo)
+              </p>
+              <div>
+                <label className={fLabel}>Funcionario</label>
+                <input
+                  type="text"
+                  name="funcionario"
+                  value={form.funcionario ?? ""}
+                  onChange={handleChange}
+                  placeholder="Nombre de quien cobra"
+                  className={fInput}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={fLabel}>Cédula</label>
+                  <input
+                    type="text"
+                    name="funcionario_ci"
+                    value={form.funcionario_ci ?? ""}
+                    onChange={handleChange}
+                    placeholder="C.I."
+                    className={fInput}
+                  />
+                </div>
+                <div>
+                  <label className={fLabel}>Período que paga</label>
+                  <input
+                    type="month"
+                    name="periodo"
+                    value={form.periodo ?? ""}
+                    onChange={handleChange}
+                    className={fInput}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-sky-700">
+                El período es el mes que se está pagando (ej: un sueldo de octubre pagado en noviembre va con período octubre). Si lo dejás vacío, se toma el mes de la fecha.
+              </p>
+            </div>
+          )}
         </div>
 
         {!gasto && (

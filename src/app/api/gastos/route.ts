@@ -59,6 +59,11 @@ export async function POST(request: NextRequest) {
     const recurrente = body.recurrente === true;
     const frecuencia = body.frecuencia != null ? String(body.frecuencia).trim() : "";
     const descuentaCaja = body.descuenta_caja === true;
+    // Salario (opcional): para el reporte por funcionario/periodo y el recibo.
+    const funcionario = body.funcionario != null ? String(body.funcionario).trim() : "";
+    const funcionarioCi = body.funcionario_ci != null ? String(body.funcionario_ci).trim() : "";
+    const periodoRaw = body.periodo != null ? String(body.periodo).trim() : "";
+    const periodo = /^\d{4}-(0[1-9]|1[0-2])$/.test(periodoRaw) ? periodoRaw : null;
 
     // Si el gasto descuenta de caja, buscamos una caja abierta AHORA
     // (no permite descontar de cajas cerradas — mantiene arqueos historicos limpios).
@@ -111,6 +116,9 @@ export async function POST(request: NextRequest) {
         fecha,
         descuenta_caja: descuentaCaja,
         caja_movimiento_id: cajaMovimientoId,
+        funcionario: funcionario || null,
+        funcionario_ci: funcionarioCi || null,
+        periodo,
       })
       .select()
       .single();
