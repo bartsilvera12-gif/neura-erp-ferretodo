@@ -3,7 +3,7 @@
 import PageHeader from "@/components/ui/PageHeader";
 import { ReportCard } from "@/components/reportes/ReportCard";
 import { Wallet, Truck, Package, ShoppingCart, ArrowLeftRight, Lock, BarChart3, CalendarClock, CreditCard ,
-  ClipboardList} from "lucide-react";
+  ClipboardList, Users, PieChart} from "lucide-react";
 
 /** Hub de reportería operativa (Fase 1: Estado de cuenta + Proveedores). */
 export default function ReportesPage() {
@@ -104,6 +104,24 @@ export default function ReportesPage() {
             icon={CalendarClock}
             description="Días estimados que dura el stock según el ritmo de venta (30/60/90 días), fecha de quiebre y estado (crítico/bajo/normal/sobrestock)."
             href="/reportes/proyeccion-inventario"
+          />
+        </li>
+        <li>
+          <ReportCard
+            title="Salarios pagados"
+            subtitle="Por funcionario y período"
+            icon={Users}
+            description="Salarios registrados en Gastos, con detalle por funcionario y por mes. Impresión de recibos individuales o de todo el período, y export a Excel."
+            href="/reportes/salarios"
+          />
+        </li>
+        <li>
+          <ReportCard
+            title="Gastos fijos y variables"
+            subtitle="A dónde va la plata"
+            icon={PieChart}
+            description="Total de gastos del período separado en fijos y variables, cuánto se destina a cada categoría y su porcentaje. Exporta a Excel."
+            href="/reportes/gastos"
           />
         </li>
       </ul>
