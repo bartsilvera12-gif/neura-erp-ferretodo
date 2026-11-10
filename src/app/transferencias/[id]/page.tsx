@@ -89,7 +89,7 @@ export default function TransferenciaDetallePage() {
           (async () => {
             try {
               const rs = await fetchWithSupabaseSession(
-                `/api/productos/search?q=${encodeURIComponent(q)}&limit=8`,
+                `/api/productos/search?q=${encodeURIComponent(q)}&limit=8&incluir_no_vendibles=1`,
                 { cache: "no-store" },
               );
               const js = await rs.json();
@@ -121,7 +121,7 @@ export default function TransferenciaDetallePage() {
     if (q.trim().length < 2) { setResBusq((p) => ({ ...p, [itemId]: [] })); return; }
     setBuscando(itemId);
     try {
-      const r = await fetchWithSupabaseSession(`/api/productos/search?q=${encodeURIComponent(q.trim())}&limit=8`, { cache: "no-store" });
+      const r = await fetchWithSupabaseSession(`/api/productos/search?q=${encodeURIComponent(q.trim())}&limit=8&incluir_no_vendibles=1`, { cache: "no-store" });
       const j = await r.json();
       const items = ((j?.data?.items ?? []) as Array<Record<string, unknown>>).map((x) => ({
         id: String(x.id), nombre: String(x.nombre ?? ""),
@@ -280,7 +280,13 @@ export default function TransferenciaDetallePage() {
                             const activo = a?.modo === m;
                             return (
                               <button key={m} type="button" role="radio" aria-checked={activo}
-                                onClick={() => setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], modo: m } }))}
+                                onClick={() => {
+                                  setAsig((p) => ({ ...p, [it.id]: { ...p[it.id], modo: m } }));
+                                  // Al tocar "Usar existente" se relanza la búsqueda (lo escrito o el nombre de origen).
+                                  if (m === "existente" && !a?.producto_id) {
+                                    void buscarProductoDestino(it.id, (busq[it.id] ?? "").trim() || it.nombre_origen);
+                                  }
+                                }}
                                 className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${activo ? "bg-[#4FAEB2] text-white shadow-sm" : "border border-[#4FAEB2]/40 bg-white text-[#2F6E71] hover:bg-[#4FAEB2]/10"}`}>
                                 {m === "existente" ? "Usar existente" : "Crear producto"}
                               </button>

@@ -76,8 +76,13 @@ export async function GET(request: NextRequest) {
           "discount_type, discount_value, discount_starts_at, discount_ends_at"
       )
       .eq("empresa_id", empresaId)
-      .eq("activo", true)
-      .eq("es_vendible", true);
+      .eq("activo", true);
+
+    // Por defecto solo vendibles; la recepción de transferencias pide todos
+    // (el producto existente puede no ser vendible, ej. insumos).
+    if (url.searchParams.get("incluir_no_vendibles") !== "1") {
+      query = query.eq("es_vendible", true);
+    }
 
     // Filtro opcional para el picker de 'Ofertas del home': solo productos
     // con descuento promocional configurado (tipo + valor > 0). No exige
