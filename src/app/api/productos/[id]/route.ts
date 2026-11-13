@@ -4,6 +4,9 @@ import { isAdmin } from "@/lib/middleware/auth";
 import { successResponse, errorResponse } from "@/lib/api/response";
 import { API_ERRORS } from "@/lib/api/errors";
 import { normalizeUpperText, normalizeUpperCodigoBarras } from "@/lib/text/normalize";
+import { fetchDataSchemaForEmpresaId } from "@/lib/supabase/empresa-data-schema";
+import { assertAllowedChatDataSchema } from "@/lib/supabase/chat-data-schema";
+import { crearSolicitudAjusteConNotificacion } from "@/lib/inventario/server/ajuste-stock-pg";
 import type { AppSupabaseClient } from "@/lib/supabase/schema";
 
 const PRODUCTO_COLS =
@@ -230,6 +233,38 @@ export async function PATCH(
       stockNuevo = Number(patch.stock_actual as number);
     }
 
+    // No-admin que cambió el stock en la ficha: en vez de ignorarlo en silencio,
+    // se crea la solicitud de ajuste y se notifica al admin para que la apruebe.
+    let solicitudAjusteId: string | null = null;
+    if (body.stock_actual !== undefined && !isAdmin(ctx.auth)) {
+      const { data: prev } = await sb
+        .from("productos")
+        .select("stock_actual, nombre, sku, costo_promedio")
+        .eq("empresa_id", empresaId)
+        .eq("id", id)
+        .maybeSingle();
+      if (prev) {
+        const p = prev as { stock_actual?: number; nombre?: string; sku?: string; costo_promedio?: number };
+        const delta = (Number(body.stock_actual) || 0) - Number(p.stock_actual ?? 0);
+        if (delta !== 0) {
+          const authRec = ctx.auth as unknown as Record<string, unknown>;
+          const schema = assertAllowedChatDataSchema(await fetchDataSchemaForEmpresaId(empresaId));
+          solicitudAjusteId = await crearSolicitudAjusteConNotificacion(schema, empresaId, {
+            producto_id: id,
+            producto_nombre: String(p.nombre ?? ""),
+            producto_sku: String(p.sku ?? ""),
+            tipo: "AJUSTE",
+            cantidad: delta,
+            costo_unitario: Number(p.costo_promedio ?? 0),
+            origen: "ajuste_manual",
+            motivo: "Cambio de stock desde la ficha del producto",
+            usuario_id: (authRec.usuarioCatalogId as string | undefined) ?? (ctx.auth.user?.id as string | undefined) ?? null,
+            usuario_nombre: ctx.auth.nombre ?? ctx.auth.user?.email ?? "Usuario",
+          });
+        }
+      }
+    }
+
     const upd = await sb
       .from("productos")
       .update(patch)
@@ -339,7 +374,9 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json(successResponse({ producto: rowToApi(updRow) }));
+    return NextResponse.json(
+      successResponse({ producto: rowToApi(updRow), ...(solicitudAjusteId ? { solicitud_ajuste_id: solicitudAjusteId } : {}) })
+    );
   } catch (err) {
     console.error("[/api/productos/[id] PATCH] outer", err instanceof Error ? err.message : err);
     return NextResponse.json(errorResponse("No se pudo actualizar el producto."), { status: 500 });

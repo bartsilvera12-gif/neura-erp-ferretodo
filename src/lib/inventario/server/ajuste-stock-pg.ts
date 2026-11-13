@@ -31,6 +31,63 @@ export function deltaStock(tipo: TipoAjuste, cantidad: number): number {
 }
 
 /**
+ * Crea una solicitud de ajuste pendiente + la notificación para el admin
+ * (la notificación es best-effort: si falla, la solicitud igual queda).
+ */
+export async function crearSolicitudAjusteConNotificacion(
+  schema: string,
+  empresaId: string,
+  s: {
+    producto_id: string;
+    producto_nombre: string;
+    producto_sku: string;
+    tipo: TipoAjuste;
+    cantidad: number;
+    costo_unitario: number;
+    origen: string;
+    motivo: string | null;
+    usuario_id: string | null;
+    usuario_nombre: string;
+  }
+): Promise<string> {
+  const client = await ajustePool().connect();
+  try {
+    await client.query("BEGIN");
+    const tS = quoteSchemaTable(schema, "solicitudes_ajuste_stock");
+    const tN = quoteSchemaTable(schema, "notificaciones");
+    const sol = await client.query<{ id: string }>(
+      `INSERT INTO ${tS} (
+         empresa_id, producto_id, producto_nombre, producto_sku, tipo, cantidad,
+         origen, costo_unitario, motivo, estado, solicitado_por, solicitado_por_nombre
+       ) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::numeric,$7,$8::numeric,$9,'pendiente',$10::uuid,$11)
+       RETURNING id::text`,
+      [empresaId, s.producto_id, s.producto_nombre, s.producto_sku, s.tipo, s.cantidad, s.origen, s.costo_unitario, s.motivo, s.usuario_id, s.usuario_nombre]
+    );
+    const accion = s.tipo === "ENTRADA" ? "aumentar" : s.tipo === "SALIDA" ? "disminuir" : "ajustar";
+    const mensaje = `${s.usuario_nombre} solicita ${accion} el stock de "${s.producto_nombre}" (${s.tipo} ${s.cantidad})${s.motivo ? ` — motivo: ${s.motivo}` : ""}.`;
+    try {
+      await client.query("SAVEPOINT sp_notif");
+      await client.query(
+        `INSERT INTO ${tN} (empresa_id, tipo, titulo, mensaje, producto_id, url)
+         VALUES ($1::uuid, 'solicitud_ajuste_stock', $2, $3, NULL, '/inventario/movimientos')`,
+        [empresaId, "Solicitud de ajuste de stock", mensaje]
+      );
+      await client.query("RELEASE SAVEPOINT sp_notif");
+    } catch (e) {
+      await client.query("ROLLBACK TO SAVEPOINT sp_notif").catch(() => null);
+      console.error("[ajuste-stock] notificación falló (best-effort)", e instanceof Error ? e.message : e);
+    }
+    await client.query("COMMIT");
+    return sol.rows[0].id;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Aplica el movimiento de stock DENTRO de la transacción en curso: inserta el
  * movimiento y actualiza productos.stock_actual. Devuelve el id del movimiento.
  * Debe llamarse con el producto lockeado por el caller o se lockea acá.
