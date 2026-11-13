@@ -77,8 +77,12 @@ export async function getEstadoCuenta(
     [empresaId, b.mesInicio]
   );
   const porCobrarQ = p.query<{ total: number }>(
-    `SELECT COALESCE(SUM(total),0)::float8 AS total FROM ${tVentas}
-      WHERE empresa_id=$1::uuid AND tipo_venta='CREDITO' AND fecha>=$2::timestamptz AND fecha<=$3::timestamptz`,
+    // Solo lo financiado: en ventas mixtas (contado + cuotas) la CxC es menor que el total de la venta.
+    `SELECT COALESCE(SUM(COALESCE(
+              (SELECT SUM(c.total) FROM ${quoteSchemaTable(schema, "cuentas_por_cobrar")} c WHERE c.venta_id = v.id),
+              v.total)),0)::float8 AS total
+       FROM ${tVentas} v
+      WHERE v.empresa_id=$1::uuid AND v.tipo_venta='CREDITO' AND v.fecha>=$2::timestamptz AND v.fecha<=$3::timestamptz`,
     [empresaId, b.start, b.end]
   );
   const porPagarQ = p.query<{ total: number }>(

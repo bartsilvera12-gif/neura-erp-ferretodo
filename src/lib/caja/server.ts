@@ -300,6 +300,7 @@ export async function getReporteCajas(
     ventas.filter((v) => v.estado === "devuelta_total").map((v) => v.id)
   );
 
+  const contadoPorVenta = await contadoDeVentasCredito(sb, empresaId, ventas);
   for (const v of ventas) {
     if (!v.caja_id || v.estado === "anulada" || v.estado === "devuelta_total") continue;
     const a = accById.get(v.caja_id);
@@ -310,16 +311,22 @@ export async function getReporteCajas(
     // Ventas a credito: NO entra plata a caja al momento de la venta.
     // Se cuentan en total_vendido pero no en ningun medio de pago.
     // El cobro efectivo llega despues via cobros_clientes.
-    if ((v.tipo_venta ?? "").toLowerCase() === "credito") continue;
+    // Excepción: venta mixta (contado + cuotas) → la parte al contado sí entra a caja.
+    let cobrado = t;
+    if ((v.tipo_venta ?? "").toLowerCase() === "credito") {
+      const c = contadoPorVenta.get(v.id);
+      if (!c) continue;
+      cobrado = c;
+    }
     // Si es mixto (o hay pagos_detalle registrados), usar el desglose real.
     const bk = pagosByVenta.get(v.id);
     if (v.metodo_pago === "mixto" && bk) {
       a.total_efectivo += bk.efectivo;
       a.total_tarjeta += bk.tarjeta;
       a.total_transferencia += bk.transferencia;
-    } else if (v.metodo_pago === "tarjeta") a.total_tarjeta += t;
-    else if (v.metodo_pago === "transferencia") a.total_transferencia += t;
-    else a.total_efectivo += t;
+    } else if (v.metodo_pago === "tarjeta") a.total_tarjeta += cobrado;
+    else if (v.metodo_pago === "transferencia") a.total_transferencia += cobrado;
+    else a.total_efectivo += cobrado;
   }
 
   for (const m of movs) {
@@ -512,6 +519,7 @@ export async function getDetalleCaja(
     }
   }
 
+  const contadoPorVenta = await contadoDeVentasCredito(sb, empresaId, ventas);
   // Acumuladores para la cabecera (misma lógica que getReporteCajas).
   let cantidadVentas = 0,
     totalVendido = 0,
@@ -523,15 +531,20 @@ export async function getDetalleCaja(
     cantidadVentas++;
     totalVendido += v.total;
     // Ventas a credito: no impactan la caja hasta que se cobren via cobros_clientes.
-    if ((v.tipo_venta ?? "").toLowerCase() === "credito") continue;
+    let cobrado = v.total;
+    if ((v.tipo_venta ?? "").toLowerCase() === "credito") {
+      const c = contadoPorVenta.get(v.id);
+      if (!c) continue;
+      cobrado = c;
+    }
     const bk = detallePagos.get(v.id);
     if (v.metodo_pago === "mixto" && bk) {
       totalEfectivo += bk.efectivo;
       totalTarjeta += bk.tarjeta;
       totalTransferencia += bk.transferencia;
-    } else if (v.metodo_pago === "tarjeta") totalTarjeta += v.total;
-    else if (v.metodo_pago === "transferencia") totalTransferencia += v.total;
-    else totalEfectivo += v.total;
+    } else if (v.metodo_pago === "tarjeta") totalTarjeta += cobrado;
+    else if (v.metodo_pago === "transferencia") totalTransferencia += cobrado;
+    else totalEfectivo += cobrado;
   }
   let ingresosEf = 0,
     egresosEf = 0,
@@ -852,6 +865,41 @@ export async function registrarMovimiento(
 // Internos
 // ============================================================
 
+/**
+ * Ventas "mixtas" (algunos productos al contado y otros en cuotas): se guardan como
+ * CREDITO, pero solo lo financiado queda en cuentas_por_cobrar. Devuelve, por venta
+ * a crédito, la parte cobrada al contado (total de la venta − total de la CxC).
+ * Solo incluye ventas con parte contado > 0.
+ */
+async function contadoDeVentasCredito(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  ventas: Array<{ id: string; total: number | string; tipo_venta: string | null; estado: string | null }>
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = ventas
+    .filter((v) => (v.tipo_venta ?? "").toLowerCase() === "credito" && v.estado !== "anulada")
+    .map((v) => v.id);
+  if (ids.length === 0) return out;
+  const cxQ = await sb
+    .from("cuentas_por_cobrar")
+    .select("venta_id, total")
+    .eq("empresa_id", empresaId)
+    .in("venta_id", ids);
+  if (cxQ.error) return out;
+  const cxcPorVenta = new Map<string, number>();
+  for (const r of (cxQ.data ?? []) as Array<{ venta_id: string; total: number | string }>) {
+    cxcPorVenta.set(r.venta_id, (cxcPorVenta.get(r.venta_id) ?? 0) + num(r.total));
+  }
+  for (const v of ventas) {
+    const cxc = cxcPorVenta.get(v.id);
+    if (cxc === undefined) continue; // sin CxC: no se puede saber, se mantiene como crédito completo
+    const contado = Math.round((num(v.total) - cxc) * 100) / 100;
+    if (contado > 0.5) out.set(v.id, contado);
+  }
+  return out;
+}
+
 async function computeResumen(
   sb: AppSupabaseClient,
   empresaId: string,
@@ -893,6 +941,7 @@ async function computeResumen(
     }
   }
 
+  const contadoPorVenta = await contadoDeVentasCredito(sb, empresaId, ventas);
   let totalVendido = 0;
   let totalEfectivo = 0;
   let totalTarjeta = 0;
@@ -905,15 +954,21 @@ async function computeResumen(
     totalVendido += t;
     // Ventas a credito: se cuentan en total_vendido pero no en ningun medio de pago
     // (el cobro efectivo llega despues via cobros_clientes).
-    if ((v.tipo_venta ?? "").toLowerCase() === "credito") continue;
+    // Excepción: venta mixta (contado + cuotas) → la parte al contado sí entra a caja.
+    let cobrado = t;
+    if ((v.tipo_venta ?? "").toLowerCase() === "credito") {
+      const c = contadoPorVenta.get(v.id);
+      if (!c) continue;
+      cobrado = c;
+    }
     const bk = detalleByVenta.get(v.id);
     if (v.metodo_pago === "mixto" && bk) {
       totalEfectivo += bk.efectivo;
       totalTarjeta += bk.tarjeta;
       totalTransferencia += bk.transferencia;
-    } else if (v.metodo_pago === "tarjeta") totalTarjeta += t;
-    else if (v.metodo_pago === "transferencia") totalTransferencia += t;
-    else totalEfectivo += t; // efectivo o sin especificar
+    } else if (v.metodo_pago === "tarjeta") totalTarjeta += cobrado;
+    else if (v.metodo_pago === "transferencia") totalTransferencia += cobrado;
+    else totalEfectivo += cobrado; // efectivo o sin especificar
   }
 
   // Movimientos manuales ACTIVOS (excluye anulados — soft delete del modulo
