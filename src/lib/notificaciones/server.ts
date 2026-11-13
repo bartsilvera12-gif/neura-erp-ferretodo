@@ -45,7 +45,7 @@ export async function listNotificaciones(
   const t = quoteSchemaTable(schema, "notificaciones");
   const p = pool();
   const listQ = p.query<NotificacionRow>(
-    `SELECT ${COLS} FROM ${t} WHERE empresa_id = $1::uuid ORDER BY leida ASC, created_at DESC LIMIT $2`,
+    `SELECT ${COLS} FROM ${t} WHERE empresa_id = $1::uuid ORDER BY leida ASC, (tipo = 'solicitud_ajuste_stock') DESC, created_at DESC LIMIT $2`,
     [empresaId, limit]
   );
   const cntQ = p.query<{ n: number }>(
