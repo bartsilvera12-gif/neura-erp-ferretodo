@@ -100,6 +100,16 @@ export default function ConfiguracionPage() {
           </li>
           <li>
             <SettingsModuleCard
+              title="Planes de cuotas"
+              subtitle="VENTAS · FINANCIACIÓN"
+              description="Cantidad de cuotas y porcentaje de recargo para vender a cuotas, en general o por producto."
+              icon={Percent}
+              badge={editorBadge}
+              href="/configuracion/planes-cuotas"
+            />
+          </li>
+          <li>
+            <SettingsModuleCard
               title="Políticas del sistema"
               subtitle="GLOBAL · COMERCIAL"
               description="Descuentos máximos, retención de clientes y límites por empresa."

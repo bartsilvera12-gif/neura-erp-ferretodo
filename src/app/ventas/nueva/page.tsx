@@ -167,6 +167,10 @@ export default function NuevaVentaPage() {
   const [tipoVenta, setTipoVenta] = useState<TipoVenta>("CONTADO");
   const [plazoDias, setPlazoDias] = useState("");
 
+  // Planes de cuotas por producto (estilo Bristol): cada línea elige contado o su plan.
+  type PlanCuota = { producto_id: string | null; cuotas: number; recargo_porcentaje: number };
+  const [planesCuotas, setPlanesCuotas] = useState<PlanCuota[]>([]);
+
   // Tipo de documento a emitir. Solo relevante si la empresa está en modo 'sifen':
   //  - "factura": activa el puente venta→factura. Al confirmar, redirige a
   //    /facturas/[id]?auto=1 (arranca el pipeline SIFEN).
@@ -551,6 +555,16 @@ export default function NuevaVentaPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Planes de cuotas (recargo %) configurados por el administrador.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/planes-cuotas", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled && j?.success) setPlanesCuotas(j.data?.planes ?? []); })
+      .catch(() => { /* sin planes: todo se vende al contado */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // Cargar clientes (buscador opcional de cliente en la venta).
   useEffect(() => {
     let cancelled = false;
@@ -689,15 +703,20 @@ export default function NuevaVentaPage() {
   const totalSubtotal = items.reduce((s, i) => s + i.subtotal, 0);
   const totalIva      = items.reduce((s, i) => s + i.monto_iva, 0);
   const totalGeneral  = items.reduce((s, i) => s + i.total_linea, 0);
+  // Cuotas por producto: lo financiado queda como deuda del cliente; lo demás se cobra ahora.
+  const itemsFinanciados = items.filter((i) => (i.cuotas ?? 1) > 1);
+  const totalFinanciado = itemsFinanciados.reduce((s, i) => s + i.total_linea, 0);
+  const totalAhora = tipoVenta === "CONTADO" ? totalGeneral - totalFinanciado : totalGeneral;
+  const cuotasValidas = itemsFinanciados.length === 0 || !!clienteId;
 
   // Condición de venta: si es Crédito, exigir plazo de al menos 1 día y un cliente.
   const plazoDiasNum = parseInt(plazoDias) || 0;
-  const creditoValido = tipoVenta === "CONTADO" || (plazoDiasNum >= 1 && !!clienteId);
+  const creditoValido = (tipoVenta === "CONTADO" || (plazoDiasNum >= 1 && !!clienteId)) && cuotasValidas;
   // Pago mixto: la suma de los pagos DEBE ser exactamente el total (tolerancia 1 Gs.).
   const pagoMixtoValido =
     !pagoMixto ||
     tipoVenta !== "CONTADO" ||
-    Math.abs(pagosMixto.reduce((s, p) => s + (Number(p.monto) || 0), 0) - totalGeneral) < 1;
+    Math.abs(pagosMixto.reduce((s, p) => s + (Number(p.monto) || 0), 0) - totalAhora) < 1;
   const ventaValida   = items.length > 0 && creditoValido && pagoMixtoValido;
 
   // Cliente (opcional) — selección + filtrado del buscador.
@@ -716,7 +735,7 @@ export default function NuevaVentaPage() {
 
   // Vuelto (solo informativo, no se persiste)
   const montoRecibidoNum = parseFloat(montoRecibido) || 0;
-  const vuelto           = montoRecibidoNum - totalGeneral;
+  const vuelto           = montoRecibidoNum - totalAhora;
 
   // ── Productos filtrados para el combobox ──────────────────────────────────
   // Solo vendibles (Reventa + Menú). Excluye materia prima / insumos.
@@ -746,9 +765,32 @@ export default function NuevaVentaPage() {
   // ── Autocomplete rápido + edición inline ──────────────────────────────────
   // Recalcula subtotal/IVA/total de una línea (IVA incluido, igual que calcIva).
   function recomputeLinea(l: LineaVenta): LineaVenta {
-    const total_linea = l.cantidad > 0 && l.precio_venta > 0 ? l.cantidad * l.precio_venta : 0;
+    const base = l.cantidad > 0 && l.precio_venta > 0 ? l.cantidad * l.precio_venta : 0;
+    // Cuotas: el recargo del plan se suma al total de la línea (precio final a financiar).
+    const cuotas = (l.cuotas ?? 1) > 1 ? (l.cuotas as number) : 1;
+    const recargo = cuotas > 1 ? l.recargo_porcentaje ?? 0 : 0;
+    const total_linea = cuotas > 1 ? Math.round(base * (1 + recargo / 100)) : base;
+    const monto_cuota = cuotas > 1 ? Math.round(total_linea / cuotas) : 0;
     const monto_iva = calcIva(l.tipo_iva, total_linea);
-    return { ...l, total_linea, monto_iva, subtotal: total_linea - monto_iva };
+    return { ...l, cuotas, recargo_porcentaje: recargo, monto_cuota, total_linea, monto_iva, subtotal: total_linea - monto_iva };
+  }
+
+  /** Planes de cuotas que se pueden ofrecer para un producto (los propios o, si no tiene, los generales). */
+  function planesDeProducto(productoId: string): PlanCuota[] {
+    const propios = planesCuotas.filter((p) => p.producto_id === productoId);
+    return propios.length > 0 ? propios : planesCuotas.filter((p) => p.producto_id === null);
+  }
+
+  /** Elige el plan de cuotas de una línea ("1" = contado). */
+  function changePlanItem(idx: number, cuotasStr: string) {
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const n = parseInt(cuotasStr, 10) || 1;
+        const plan = n > 1 ? planesDeProducto(it.producto_id).find((p) => p.cuotas === n) : undefined;
+        return recomputeLinea({ ...it, cuotas: plan ? plan.cuotas : 1, recargo_porcentaje: plan ? plan.recargo_porcentaje : 0 });
+      })
+    );
   }
 
   /** Mapea un item del buscador (/api/productos/search) al tipo Producto local.
@@ -1440,6 +1482,31 @@ export default function NuevaVentaPage() {
                                       ? ` = ${item.cantidad * item.presentacion_cantidad_base}` : ""}
                                   </p>
                                 )}
+                                {planesDeProducto(item.producto_id).length > 0 && (
+                                  <div className="mt-1">
+                                    <select
+                                      aria-label="Plan de cuotas"
+                                      value={String(item.cuotas ?? 1)}
+                                      onChange={(e) => changePlanItem(idx, e.target.value)}
+                                      className="h-7 max-w-[15rem] rounded-md border border-slate-200 bg-white px-1.5 text-[11px] text-slate-700"
+                                    >
+                                      <option value="1">Contado</option>
+                                      {planesDeProducto(item.producto_id).map((p) => {
+                                        const tot = Math.round(Math.max(0, item.cantidad * item.precio_venta) * (1 + p.recargo_porcentaje / 100));
+                                        return (
+                                          <option key={p.cuotas} value={String(p.cuotas)}>
+                                            {p.cuotas} x {formatGs(Math.round(tot / p.cuotas))}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    {(item.cuotas ?? 1) > 1 && (
+                                      <p className="mt-0.5 text-[11px] font-medium text-sky-700">
+                                        {item.cuotas} cuotas de {formatGs(item.monto_cuota ?? 0)} (+{item.recargo_porcentaje ?? 0}% recargo) · Total {formatGs(item.total_linea)}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1574,6 +1641,21 @@ export default function NuevaVentaPage() {
                       <span>TOTAL</span>
                       <span className="tabular-nums">{formatGs(totalGeneral)}</span>
                     </div>
+                    {itemsFinanciados.length > 0 && (
+                      <>
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>Financiado en cuotas</span>
+                          <span className="tabular-nums font-medium">{formatGs(totalFinanciado)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-semibold text-gray-900">
+                          <span>A cobrar ahora</span>
+                          <span className="tabular-nums">{formatGs(totalAhora)}</span>
+                        </div>
+                        {!clienteId && (
+                          <p className="text-[11px] text-red-600">Para vender a cuotas seleccioná un cliente.</p>
+                        )}
+                      </>
+                    )}
                   </div>
 
                   {tipoVenta === "CONTADO" && (
@@ -1595,7 +1677,7 @@ export default function NuevaVentaPage() {
                         <PagosMixtoEditor
                           pagos={pagosMixto}
                           onChange={setPagosMixto}
-                          total={totalGeneral}
+                          total={totalAhora}
                           entidades={entidades}
                           formatGs={formatGs}
                         />

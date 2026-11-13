@@ -30,6 +30,12 @@ export interface LineaVenta {
   presentacion_id?:           string | null;
   presentacion_nombre?:       string | null;
   presentacion_cantidad_base?: number | null;
+  /** Plan de cuotas de ESTA línea. 1 (o ausente) = contado. Con cuotas > 1, total_linea ya incluye el recargo. */
+  cuotas?:               number;
+  /** % de recargo del plan elegido (0 si es contado). */
+  recargo_porcentaje?:   number;
+  /** Importe de cada cuota (total_linea / cuotas, redondeado). 0 si es contado. */
+  monto_cuota?:          number;
 }
 
 /** Cabecera de venta: condiciones comerciales + totales consolidados. */

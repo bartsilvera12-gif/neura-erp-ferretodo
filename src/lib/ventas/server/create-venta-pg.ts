@@ -55,6 +55,10 @@ export interface CreateVentaItemInput {
    * backfill), se asume cantidad_base = 1 (compatibilidad legacy).
    */
   presentacion_id?: string | null;
+  /** Plan de cuotas de la línea (1 = contado). total_linea ya incluye el recargo. */
+  cuotas?: number;
+  recargo_porcentaje?: number;
+  monto_cuota?: number;
 }
 
 export interface CreateVentaPedidoCocinaInput {
@@ -163,6 +167,46 @@ export async function createVentaTransaccionalPg(
   }
 
   const sb = createServiceRoleClientWithDbSchema(params.schema);
+
+  // ---------------------------------------------------------------------
+  // Cuotas por línea (estilo Bristol): cada producto puede ir al contado o con su
+  // propio plan. Se valida que el recargo coincida con el plan configurado.
+  // ---------------------------------------------------------------------
+  const lineasFinanciadas = items.filter((i) => (i.cuotas ?? 1) > 1);
+  const totalFinanciado = lineasFinanciadas.reduce((s, i) => s + i.total_linea, 0);
+  let tipoVentaEf = params.tipoVenta;
+  let plazoDiasEf = params.plazoDias;
+  // Monto que queda como deuda del cliente: solo lo financiado (si la venta no es crédito completa).
+  let montoCxc = calc.total;
+  if (lineasFinanciadas.length > 0) {
+    if (!params.clienteId) {
+      throw new Error("Para vender a cuotas tenés que seleccionar un cliente.");
+    }
+    const pq = await sb
+      .from("producto_planes_cuotas")
+      .select("producto_id, cuotas, recargo_porcentaje")
+      .eq("empresa_id", params.empresaId)
+      .eq("activo", true);
+    if (pq.error) throw new Error(pq.error.message);
+    const planesDb = (pq.data ?? []) as Array<{ producto_id: string | null; cuotas: number; recargo_porcentaje: number }>;
+    for (const it of lineasFinanciadas) {
+      const propios = planesDb.filter((p) => p.producto_id === it.producto_id);
+      const vigentes = propios.length > 0 ? propios : planesDb.filter((p) => p.producto_id === null);
+      const plan = vigentes.find((p) => Number(p.cuotas) === it.cuotas);
+      if (!plan) {
+        throw new Error(`El plan de ${it.cuotas} cuotas no está disponible para "${it.producto_nombre}".`);
+      }
+      if (Math.abs(Number(plan.recargo_porcentaje) - (it.recargo_porcentaje ?? 0)) > 0.01) {
+        throw new Error(`El recargo de "${it.producto_nombre}" cambió: volvé a elegir el plan de cuotas.`);
+      }
+    }
+    if (tipoVentaEf === "CONTADO") {
+      tipoVentaEf = "CREDITO";
+      montoCxc = totalFinanciado;
+      // Vence la última cuota: 30 días por cada cuota del plan más largo.
+      plazoDiasEf = 30 * Math.max(...lineasFinanciadas.map((i) => i.cuotas ?? 1));
+    }
+  }
 
   // ---------------------------------------------------------------------
   // Resolver presentaciones para cada item ANTES de validar stock.
@@ -564,8 +608,8 @@ export async function createVentaTransaccionalPg(
       monto_iva: calc.montoIva,
       total: calc.total,
       estado: "completada",
-      tipo_venta: params.tipoVenta,
-      plazo_dias: params.plazoDias,
+      tipo_venta: tipoVentaEf,
+      plazo_dias: plazoDiasEf,
       metodo_pago: params.metodoPago,
       genera_nota_remision: generaNota,
       nota_remision_numero: notaRemisionNumero,
@@ -621,6 +665,9 @@ export async function createVentaTransaccionalPg(
         presentacion_nombre: lr.presentacionNombre,
         presentacion_cantidad_base: lr.presentacionCantBase,
         cantidad_total_base: lr.cantidadTotalBase,
+        cuotas: line.cuotas && line.cuotas > 1 ? line.cuotas : 1,
+        recargo_porcentaje: line.cuotas && line.cuotas > 1 ? line.recargo_porcentaje ?? 0 : 0,
+        monto_cuota: line.cuotas && line.cuotas > 1 ? Math.round(line.total_linea / line.cuotas) : 0,
       };
     });
     const insItems = await sb.from("ventas_items").insert(itemsRows);
@@ -781,14 +828,14 @@ export async function createVentaTransaccionalPg(
     //    estado 'pendiente'. NO afecta stock ni movimientos: es cobranza. Un índice único
     //    sobre venta_id impide CxC duplicada si la venta se reintentara.
     let cuentaPorCobrarId: string | null = null;
-    if (params.tipoVenta === "CREDITO" && params.clienteId) {
+    if (tipoVentaEf === "CREDITO" && params.clienteId) {
       const fechaEmision = fechaIso.slice(0, 10);
       let fechaVencimiento: string | null = null;
       if (params.fechaVencimiento) {
         fechaVencimiento = params.fechaVencimiento;
-      } else if (params.plazoDias && params.plazoDias > 0) {
+      } else if (plazoDiasEf && plazoDiasEf > 0) {
         const d = new Date(fechaIso);
-        d.setDate(d.getDate() + params.plazoDias);
+        d.setDate(d.getDate() + plazoDiasEf);
         fechaVencimiento = d.toISOString().slice(0, 10);
       }
       const insCxc = await sb
@@ -801,8 +848,8 @@ export async function createVentaTransaccionalPg(
           fecha_emision: fechaEmision,
           fecha_vencimiento: fechaVencimiento,
           moneda: params.moneda === "USD" ? "USD" : "PYG",
-          total: calc.total,
-          saldo: calc.total,
+          total: montoCxc,
+          saldo: montoCxc,
           estado: "pendiente",
         })
         .select("id")
@@ -865,9 +912,9 @@ export async function createVentaTransaccionalPg(
             fecha: fechaYmd,
             fecha_vencimiento: fechaYmd,
             monto: calc.total,
-            saldo: params.tipoVenta === "CREDITO" ? calc.total : 0,
-            estado: params.tipoVenta === "CREDITO" ? "Pendiente" : "Pagado",
-            tipo: params.tipoVenta === "CREDITO" ? "credito" : "contado",
+            saldo: tipoVentaEf === "CREDITO" ? montoCxc : 0,
+            estado: tipoVentaEf === "CREDITO" ? "Pendiente" : "Pagado",
+            tipo: tipoVentaEf === "CREDITO" ? "credito" : "contado",
             moneda: params.moneda === "USD" ? "USD" : "GS",
             cliente_razon_social: razonSocial,
             cliente_ruc: rucSnap,

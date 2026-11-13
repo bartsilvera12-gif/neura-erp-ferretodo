@@ -48,6 +48,9 @@ function asItems(body: unknown): CreateVentaItemInput[] | null {
       // Opcional: si la UI mando una presentacion explicita (Caja, Paquete...),
       // se usa para resolver cantidad_total_base. Sin presentacion → default.
       presentacion_id: r.presentacion_id ? String(r.presentacion_id) : null,
+      cuotas: Number.isFinite(Number(r.cuotas)) && Number(r.cuotas) > 1 ? Math.floor(Number(r.cuotas)) : 1,
+      recargo_porcentaje: Number(r.recargo_porcentaje) > 0 ? Number(r.recargo_porcentaje) : 0,
+      monto_cuota: Number(r.monto_cuota) > 0 ? Number(r.monto_cuota) : 0,
     });
   }
   if (out.some((i) => !i.producto_id || !(i.cantidad > 0))) return null;
