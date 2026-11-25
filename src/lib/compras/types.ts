@@ -54,4 +54,7 @@ export interface Compra {
   estado_pago?: "pendiente" | "pagada";
   pagada_at?: string | null;
   pago_caja_movimiento_id?: string | null;
+  /** Stock actual del producto (al momento de consultar, no el de la compra). */
+  stock_actual?: number | null;
+  stock_minimo?: number | null;
 }

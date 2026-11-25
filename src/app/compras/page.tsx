@@ -24,6 +24,10 @@ function formatGs(valor: number) {
 function formatFecha(iso: string) {
   try {
     const d = new Date(iso);
+    // Compras viejas guardadas como medianoche UTC (solo fecha): mostrar el día tal cual, sin hora.
+    if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+      return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+    }
     const dd = String(d.getDate()).padStart(2, "0");
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const yyyy = d.getFullYear();
@@ -325,15 +329,14 @@ export default function ComprasPage() {
               ) : (
                 filtrados.map((g) => {
                   const abierto = expandidos.has(g.numero_control);
-                  const multi = g.items.length > 1;
                   return (
                     <FragmentRow key={g.numero_control}>
                       <tr
-                        className={`border-b border-slate-200 transition-colors ${g.anulada ? "bg-red-50/40 text-slate-400 line-through hover:bg-red-50/60" : "hover:bg-[#4FAEB2]/[0.04]"} ${multi ? "cursor-pointer" : ""}`}
-                        onClick={() => multi && toggle(g.numero_control)}
+                        className={`border-b border-slate-200 transition-colors ${g.anulada ? "bg-red-50/40 text-slate-400 line-through hover:bg-red-50/60" : "hover:bg-[#4FAEB2]/[0.04]"} cursor-pointer`}
+                        onClick={() => toggle(g.numero_control)}
                       >
                         <td className="py-4 pr-4 font-mono text-xs text-gray-500">
-                          {multi && <span className="mr-1 inline-block text-gray-400">{abierto ? "▾" : "▸"}</span>}
+                          <span className="mr-1 inline-block text-gray-400">{abierto ? "▾" : "▸"}</span>
                           {g.numero_control}
                           {g.anulada && (
                             <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700 no-underline">
@@ -427,13 +430,22 @@ export default function ComprasPage() {
                         </td>
                       </tr>
 
-                      {abierto && multi && g.items.map((it) => (
+                      {abierto && g.items.map((it) => {
+                        const sa = it.stock_actual;
+                        const sm = it.stock_minimo ?? 0;
+                        const faltante = sa != null && (sa === 0 || (sm > 0 && sa <= sm));
+                        return (
                         <tr key={it.id} className="border-b border-slate-100 bg-slate-50/50 text-xs">
                           <td className="py-2 pr-4" />
                           <td className="py-2 pr-4" />
                           <td className="py-2 pr-4 text-gray-700">
                             <span className="font-medium">{it.producto_nombre}</span>
                             <span className="ml-2 font-mono text-gray-400">{formatGs(it.costo_unitario)}/u</span>
+                            {sa != null && (
+                              <div className={`mt-0.5 ${faltante ? "font-semibold text-red-600" : "text-gray-500"}`}>
+                                Stock actual: {sa.toLocaleString("es-PY")}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums text-gray-600">{it.cantidad}</td>
                           <td className="py-2 pr-4 text-right tabular-nums text-gray-700">{formatGs(it.total)}</td>
@@ -441,7 +453,8 @@ export default function ComprasPage() {
                           <td />
                           <td />
                         </tr>
-                      ))}
+                        );
+                      })}
                     </FragmentRow>
                   );
                 })

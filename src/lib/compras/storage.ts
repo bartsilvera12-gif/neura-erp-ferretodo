@@ -22,6 +22,8 @@ interface CompraApiRow {
   estado_pago?: string | null;
   pagada_at?: string | null;
   pago_caja_movimiento_id?: string | null;
+  stock_actual?: string | number | null;
+  stock_minimo?: string | number | null;
 }
 
 function mapRow(r: CompraApiRow): Compra {
@@ -59,6 +61,8 @@ function mapRow(r: CompraApiRow): Compra {
     estado_pago: r.estado_pago === "pagada" ? "pagada" : "pendiente",
     pagada_at: r.pagada_at ?? null,
     pago_caja_movimiento_id: r.pago_caja_movimiento_id ?? null,
+    stock_actual: r.stock_actual != null ? Number(r.stock_actual) : null,
+    stock_minimo: r.stock_minimo != null ? Number(r.stock_minimo) : null,
     fecha: r.fecha,
   };
 }

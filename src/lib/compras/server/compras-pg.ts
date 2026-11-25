@@ -287,6 +287,9 @@ export interface CompraRow {
   updated_at: string;
   created_by: string | null;
   usuario_nombre: string | null;
+  /** Stock actual del producto (solo lo completa listCompras). */
+  stock_actual?: number | null;
+  stock_minimo?: number | null;
 }
 
 const COLS = `
@@ -335,6 +338,22 @@ export async function listCompras(
     `SELECT ${COLS} FROM ${t} WHERE empresa_id = $1::uuid ORDER BY fecha DESC LIMIT 500`,
     [empresaId]
   );
+  // Stock ACTUAL del producto (no el de la fecha de compra) para el detalle del listado.
+  const ids = [...new Set(rows.map((r) => r.producto_id).filter(Boolean))];
+  if (ids.length > 0) {
+    const tP = quoteSchemaTable(schema, "productos");
+    const { rows: prods } = await pool().query<{ id: string; stock_actual: string; stock_minimo: string }>(
+      `SELECT id, stock_actual, stock_minimo FROM ${tP}
+        WHERE empresa_id = $1::uuid AND id = ANY($2::uuid[])`,
+      [empresaId, ids]
+    );
+    const map = new Map(prods.map((p) => [p.id, p]));
+    for (const r of rows) {
+      const p = map.get(r.producto_id);
+      r.stock_actual = p ? Number(p.stock_actual) : null;
+      r.stock_minimo = p ? Number(p.stock_minimo) : null;
+    }
+  }
   return rows;
 }
 
@@ -455,7 +474,7 @@ export async function insertComprasConImpactoTx(
          $11, $12::numeric, $13::numeric, $14::numeric, $15::numeric, $16::numeric,
          $17, $18::integer, $19, $20, $21::date, $22,
          $23, $24::uuid,
-         $25, 'registrada', COALESCE($32::timestamptz, now()),
+         $25, 'registrada', COALESCE(($32::date + time '12:00')::timestamp AT TIME ZONE 'UTC', now()),
          $26, $27, $28, $29,
          $30::uuid, $31
        )
