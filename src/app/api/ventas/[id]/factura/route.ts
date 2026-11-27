@@ -9,19 +9,24 @@ import {
   type LiquidacionIva,
 } from "@/lib/facturacion/autoimpresor/emitir-factura";
 import { renderFacturaTicketHTML } from "@/lib/facturacion/autoimpresor/render-factura-ticket";
+import { renderFacturaA4HTML } from "@/lib/facturacion/autoimpresor/render-factura-a4";
 import { EMPRESA_DOC } from "@/lib/documentos/membrete";
 
 /**
- * GET /api/ventas/[id]/factura?w=58|80&auto=1&preview=1
+ * GET /api/ventas/[id]/factura?formato=a4|ticket&w=58|80&auto=1&preview=1
  *
- * Devuelve la FACTURA AUTOIMPRESOR de la venta en formato TICKET (58/80 mm), con
- * el mismo aspecto que el ticket interno pero con los datos fiscales (timbrado,
- * número correlativo, liquidación de IVA).
+ * Devuelve la FACTURA AUTOIMPRESOR de la venta. El formato se elige asi:
+ *   1) ?formato=a4|ticket  (query, pisa todo)
+ *   2) formato_impresion_default de empresa_autoimpresor_config:
+ *       pdf_a4            → hoja A4
+ *       ticket_58mm/80mm  → ticket termico (w se saca de ahi si no vino en query)
+ *       pdf_media_hoja    → por ahora cae a A4
  *
- * - modo=autoimpresor + config activa + rango disponible → EMITE número real
- *   (idempotente por venta) y renderiza la factura legal.
- * - En otro caso (o ?preview=1) → BORRADOR con aviso "SIN VALIDEZ FISCAL", sin
- *   consumir la numeración. Sirve para ver el formato antes de activar.
+ * Modos:
+ *  - autoimpresor activo + rango disponible → EMITE numero real (idempotente
+ *    por venta) y renderiza la factura legal.
+ *  - preview=1 o config incompleta → BORRADOR con aviso "PRUEBA / NO VALIDO",
+ *    sin consumir la numeracion. Sirve para validar el formato antes de activar.
  *
  * No toca SIFEN ni el ticket interno.
  */
@@ -35,12 +40,30 @@ interface ItemRow {
   tipo_iva: string;
 }
 
+type Formato = "a4" | "ticket";
+
+function resolverFormato(query: string | null, defaultImpresion: string | null | undefined): {
+  formato: Formato;
+  widthMm: 58 | 80;
+} {
+  const q = (query || "").toLowerCase();
+  if (q === "a4" || q === "pdf_a4") return { formato: "a4", widthMm: 80 };
+  if (q === "ticket" || q === "ticket_58mm" || q === "ticket_80mm") {
+    return { formato: "ticket", widthMm: q === "ticket_58mm" ? 58 : 80 };
+  }
+  const def = (defaultImpresion || "pdf_a4").toLowerCase();
+  if (def === "ticket_58mm") return { formato: "ticket", widthMm: 58 };
+  if (def === "ticket_80mm") return { formato: "ticket", widthMm: 80 };
+  // pdf_a4 y pdf_media_hoja → A4
+  return { formato: "a4", widthMm: 80 };
+}
+
 export async function GET(request: NextRequest, ctxParams: { params: Promise<{ id: string }> }) {
   const { id } = await ctxParams.params;
   const url = new URL(request.url);
   const forcePreview = url.searchParams.get("preview") === "1";
   const autoPrint = url.searchParams.get("auto") === "1";
-  const widthMm: 58 | 80 = url.searchParams.get("w") === "58" ? 58 : 80;
+  const widthQuery = url.searchParams.get("w");
   const origin = url.origin;
 
   const ctx = await getTenantSupabaseFromAuth(request);
@@ -61,7 +84,7 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
     id: string; numero_control: string; fecha: string; tipo_venta: string | null; cliente_id: string | null;
   };
 
-  // Ítems
+  // Items
   const iQ = await ctx.supabase
     .from("ventas_items")
     .select("producto_nombre, cantidad, precio_venta, total_linea, monto_iva, tipo_iva")
@@ -110,6 +133,13 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
     logoUrl: EMPRESA_DOC.logoUrl,
   };
 
+  // Elegir formato: query pisa; si no, el default de la config.
+  const { formato, widthMm: widthFromConfig } = resolverFormato(
+    url.searchParams.get("formato"),
+    cfg.formato_impresion_default,
+  );
+  const widthMm: 58 | 80 = widthQuery === "58" ? 58 : widthQuery === "80" ? 80 : widthFromConfig;
+
   const puedeEmitir =
     !forcePreview &&
     modo.modo === "autoimpresor" &&
@@ -121,7 +151,7 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
     cfg.numero_final != null &&
     cfg.numero_actual != null;
 
-  function ticket(opts: {
+  function render(opts: {
     borrador: boolean;
     motivo?: string | null;
     numeroCompleto: string;
@@ -130,10 +160,9 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
     timbrado: { numero: string; inicio: string | null; fin: string | null };
     liq: LiquidacionIva;
   }) {
-    const html = renderFacturaTicketHTML({
+    const payload = {
       borrador: opts.borrador,
       motivoBorrador: opts.motivo,
-      widthMm,
       emisor,
       origin,
       timbrado: opts.timbrado,
@@ -145,7 +174,10 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
       items,
       liq: opts.liq,
       autoPrint,
-    });
+    };
+    const html = formato === "a4"
+      ? renderFacturaA4HTML(payload)
+      : renderFacturaTicketHTML({ ...payload, widthMm });
     return new NextResponse(html, {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
@@ -155,7 +187,7 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
   if (puedeEmitir) {
     try {
       const f = await emitirFacturaAutoimpresor(schema, empresaId, id);
-      return ticket({
+      return render({
         borrador: false,
         numeroCompleto: f.numero_completo,
         fechaEmision: f.emitida_at,
@@ -165,7 +197,6 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
       });
     } catch (e) {
       if (!(e instanceof EmisionBloqueadaError)) throw e;
-      // cae a borrador con el motivo
       return borrador(e.message);
     }
   }
@@ -173,7 +204,7 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
   function borrador(motivo: string) {
     const est = cfg.establecimiento_codigo?.trim() || "001";
     const punto = cfg.punto_expedicion_codigo?.trim() || "002";
-    return ticket({
+    return render({
       borrador: true,
       motivo,
       numeroCompleto: `${est.padStart(3, "0").slice(-3)}-${punto.padStart(3, "0").slice(-3)}-XXXXXXX`,
