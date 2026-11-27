@@ -41,6 +41,24 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
   const moneda = String(r.moneda ?? "PYG");
   const metodo = METODO_LBL[String(r.metodo_pago ?? "")] ?? (r.metodo_pago ?? "—");
 
+  const itq = await ctx.supabase
+    .from("recibos_dinero_items")
+    .select("numero_venta, monto, saldo_restante")
+    .eq("empresa_id", ctx.auth.empresa_id)
+    .eq("recibo_id", id)
+    .order("created_at", { ascending: true });
+  const items = (itq.data ?? []) as unknown as Array<{ numero_venta: string | null; monto: number; saldo_restante: number }>;
+  const detalleHtml = items.length
+    ? `<table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
+    <thead><tr style="background:#f3f4f6;text-align:left"><th style="padding:6px 8px">Factura / Venta</th><th style="padding:6px 8px;text-align:right">Monto cobrado</th><th style="padding:6px 8px;text-align:right">Saldo restante</th></tr></thead>
+    <tbody>${items
+      .map(
+        (i) =>
+          `<tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px 8px">${esc(i.numero_venta ?? "—")}</td><td style="padding:6px 8px;text-align:right">${fmtMonto(i.monto, moneda)}</td><td style="padding:6px 8px;text-align:right">${fmtMonto(i.saldo_restante, moneda)}</td></tr>`
+      )
+      .join("")}</tbody></table>`
+    : "";
+
   const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(r.numero_recibo)} — Recibo de dinero</title>
@@ -91,7 +109,9 @@ export async function GET(request: NextRequest, ctxParams: { params: Promise<{ i
     <div class="val">${fmtMonto(r.monto, moneda)}</div>
   </div>
 
+  ${detalleHtml}
   <div class="det">
+    ${r.anulado ? `<div style="color:#b91c1c"><b>RECIBO ANULADO</b></div>` : ""}
     ${r.concepto ? `<div><b>Concepto:</b> ${esc(r.concepto)}</div>` : ""}
     <div><b>Método de pago:</b> ${esc(metodo)}</div>
     ${r.referencia ? `<div><b>Referencia:</b> ${esc(r.referencia)}</div>` : ""}

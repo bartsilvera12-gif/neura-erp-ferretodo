@@ -401,6 +401,39 @@ export async function anularCobro(
 
   await revertirCajaDeCobro(sb, empresaId, cobro, input);
 
+  // Recibo múltiple: anular el recibo revierte TODOS los cobros que incluye.
+  try {
+    const itq = await sb
+      .from("recibos_dinero_items")
+      .select("recibo_id")
+      .eq("empresa_id", empresaId)
+      .eq("cobro_cliente_id", cobro.id);
+    const reciboIds = Array.from(new Set(((itq.data ?? []) as Array<{ recibo_id: string }>).map((x) => String(x.recibo_id))));
+    for (const rid of reciboIds) {
+      await sb
+        .from("recibos_dinero")
+        .update({ anulado: true, updated_at: new Date().toISOString() })
+        .eq("empresa_id", empresaId)
+        .eq("id", rid);
+      const hermanos = await sb
+        .from("recibos_dinero_items")
+        .select("cobro_cliente_id")
+        .eq("empresa_id", empresaId)
+        .eq("recibo_id", rid);
+      for (const h of (hermanos.data ?? []) as Array<{ cobro_cliente_id: string | null }>) {
+        if (!h.cobro_cliente_id || String(h.cobro_cliente_id) === cobro.id) continue;
+        await anularCobro(sb, empresaId, {
+          cobro_id: String(h.cobro_cliente_id),
+          motivo: input.motivo || "Anulación del recibo múltiple",
+          usuario_id: input.usuario_id,
+          usuario_nombre: input.usuario_nombre,
+        });
+      }
+    }
+  } catch (e) {
+    console.error("[cobros] no se pudo anular el recibo múltiple:", e instanceof Error ? e.message : e);
+  }
+
   return { cobro_id: cobro.id, saldo_nuevo: r.saldo_nuevo, estado: r.estado, ya_anulado: false };
 }
 

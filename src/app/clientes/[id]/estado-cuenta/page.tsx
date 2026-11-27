@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, Banknote, Download } from "lucide-react";
 import { fetchWithSupabaseSession } from "@/lib/api/fetch-with-supabase-session";
 import { generarYAbrirRecibo } from "@/lib/recibos/client";
 import { RegistrarCobroModalCxc } from "@/components/cobros/RegistrarCobroModalCxc";
+import { CobrarMultipleModal } from "@/components/cobros/CobrarMultipleModal";
 
 type Mov = {
   id: string;
@@ -66,6 +67,8 @@ export default function EstadoCuentaPage() {
 
   const [cobrando, setCobrando] = useState<Mov | null>(null);
   const [reciboBusy, setReciboBusy] = useState<string | null>(null);
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [cobrandoMulti, setCobrandoMulti] = useState(false);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -93,6 +96,20 @@ export default function EstadoCuentaPage() {
 
   function abrirCobro(m: Mov) {
     setCobrando(m);
+  }
+
+  const abiertas = movs.filter((m) => m.estado !== "pagado" && m.estado !== "anulado" && m.saldo > 0.001);
+  const seleccionadas = abiertas.filter((m) => seleccion.has(m.id));
+  const todasMarcadas = abiertas.length > 0 && seleccionadas.length === abiertas.length;
+  function toggleSel(mid: string) {
+    setSeleccion((prev) => {
+      const n = new Set(prev);
+      if (n.has(mid)) n.delete(mid); else n.add(mid);
+      return n;
+    });
+  }
+  function toggleTodas() {
+    setSeleccion(todasMarcadas ? new Set() : new Set(abiertas.map((m) => m.id)));
   }
 
   if (loading) {
@@ -158,7 +175,26 @@ export default function EstadoCuentaPage() {
 
       {/* Movimientos (créditos) */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="border-b border-slate-100 px-4 py-3"><h2 className="text-sm font-semibold text-gray-700">Cuentas a crédito</h2></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+          <h2 className="text-sm font-semibold text-gray-700">Cuentas a crédito</h2>
+          {abiertas.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setSeleccion(new Set(abiertas.map((m) => m.id))); setCobrandoMulti(true); }}
+                className="rounded-lg border border-[#4FAEB2] bg-white px-3 py-1.5 text-xs font-semibold text-[#3F8E91] hover:bg-slate-50"
+              >
+                Cobrar todo
+              </button>
+              <button
+                disabled={seleccionadas.length === 0}
+                onClick={() => setCobrandoMulti(true)}
+                className="rounded-lg bg-[#4FAEB2] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#3F8E91] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cobrar seleccionadas ({seleccionadas.length})
+              </button>
+            </div>
+          )}
+        </div>
         {movs.length === 0 ? (
           <div className="p-6 text-center text-sm text-gray-500">Este cliente no tiene ventas a crédito.</div>
         ) : (
@@ -166,6 +202,9 @@ export default function EstadoCuentaPage() {
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-gray-500">
                 <tr>
+                  <th className="py-2.5 px-4 font-medium w-8">
+                    <input type="checkbox" aria-label="Seleccionar todas" checked={todasMarcadas} onChange={toggleTodas} disabled={abiertas.length === 0} />
+                  </th>
                   <th className="py-2.5 px-4 font-medium">Venta</th>
                   <th className="py-2.5 px-4 font-medium">Emisión</th>
                   <th className="py-2.5 px-4 font-medium">Vencimiento</th>
@@ -179,6 +218,11 @@ export default function EstadoCuentaPage() {
               <tbody className="divide-y divide-slate-100">
                 {movs.map((m) => (
                   <tr key={m.id}>
+                    <td className="py-2.5 px-4">
+                      {m.estado !== "pagado" && m.estado !== "anulado" && m.saldo > 0.001 ? (
+                        <input type="checkbox" aria-label={`Seleccionar ${m.numero_venta ?? "cuenta"}`} checked={seleccion.has(m.id)} onChange={() => toggleSel(m.id)} />
+                      ) : null}
+                    </td>
                     <td className="py-2.5 px-4 font-mono font-medium text-gray-800">{m.numero_venta ?? "—"}</td>
                     <td className="py-2.5 px-4 text-gray-600">{fmtFecha(m.fecha_emision)}</td>
                     <td className={`py-2.5 px-4 ${m.vencida ? "font-semibold text-red-600" : "text-gray-600"}`}>{fmtFecha(m.fecha_vencimiento)}</td>
@@ -265,6 +309,14 @@ export default function EstadoCuentaPage() {
           </div>
         )}
       </div>
+
+      <CobrarMultipleModal
+        open={cobrandoMulti}
+        cuentas={seleccionadas.map((m) => ({ id: m.id, numero_venta: m.numero_venta, fecha_emision: m.fecha_emision, saldo: m.saldo }))}
+        clienteNombre={cliente?.nombre ?? null}
+        onClose={() => { setCobrandoMulti(false); setSeleccion(new Set()); }}
+        onExito={async () => { setToast("Cobro registrado"); setTimeout(() => setToast(null), 2800); await cargar(); }}
+      />
 
       <RegistrarCobroModalCxc
         open={!!cobrando}

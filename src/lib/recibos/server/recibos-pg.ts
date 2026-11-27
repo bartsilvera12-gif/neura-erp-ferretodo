@@ -148,6 +148,19 @@ export async function crearOReusarRecibo(
       .maybeSingle();
     if (ex.data) return { recibo: ex.data as unknown as Record<string, unknown>, existed: true };
 
+    // ¿El cobro ya está incluido en un recibo múltiple? Se reutiliza ese recibo.
+    const itq = await sb
+      .from("recibos_dinero_items")
+      .select("recibo_id")
+      .eq("empresa_id", empresaId)
+      .eq("cobro_cliente_id", cobroId)
+      .limit(1);
+    const reciboMultiId = (itq.data?.[0] as { recibo_id?: string } | undefined)?.recibo_id;
+    if (reciboMultiId) {
+      const rm = await sb.from("recibos_dinero").select(RECIBO_COLS).eq("empresa_id", empresaId).eq("id", reciboMultiId).maybeSingle();
+      if (rm.data) return { recibo: rm.data as unknown as Record<string, unknown>, existed: true };
+    }
+
     // Concepto según saldo de la cuenta (cancelación vs parcial).
     let numeroVenta = "";
     let saldo = 0;
@@ -189,6 +202,67 @@ export async function crearOReusarRecibo(
   }
 
   throw new ReciboError("Origen de recibo inválido.");
+}
+
+export interface ReciboMultipleInput {
+  cliente_id: string | null;
+  moneda: string;
+  metodo_pago: string;
+  entidad_bancaria_id: string | null;
+  referencia: string | null;
+  observaciones: string | null;
+  items: Array<{
+    cobro_cliente_id: string;
+    cuenta_por_cobrar_id: string;
+    numero_venta: string | null;
+    monto: number;
+    saldo_restante: number;
+  }>;
+}
+
+/** Crea UN recibo con una línea por cuenta cobrada (tabla recibos_dinero_items). */
+export async function crearReciboMultiple(
+  sb: AppSupabaseClient,
+  empresaId: string,
+  input: ReciboMultipleInput,
+  usuario: { id: string | null; nombre: string | null }
+): Promise<{ recibo: Record<string, unknown> }> {
+  if (input.items.length === 0) throw new ReciboError("El recibo no tiene líneas.");
+  const { nombre, documento } = await nombreYDoc(sb, empresaId, input.cliente_id);
+  const total = input.items.reduce((s, i) => s + i.monto, 0);
+  const nums = input.items.map((i) => i.numero_venta).filter(Boolean).join(", ");
+  const { recibo } = await insertarRecibo(sb, empresaId, usuario, {
+    cliente_id: input.cliente_id,
+    cliente_nombre: nombre,
+    cliente_documento: documento,
+    origen: "cobro_cxc",
+    venta_id: null,
+    cuenta_por_cobrar_id: null,
+    cobro_cliente_id: null,
+    moneda: input.moneda,
+    monto: Math.round(total * 100) / 100,
+    metodo_pago: input.metodo_pago,
+    entidad_bancaria_id: input.entidad_bancaria_id,
+    referencia: input.referencia,
+    concepto: `Cobro de ${input.items.length} cuenta${input.items.length === 1 ? "" : "s"}: ${nums}`.slice(0, 500),
+    observaciones: input.observaciones,
+  });
+  const ins = await sb.from("recibos_dinero_items").insert(
+    input.items.map((i) => ({
+      empresa_id: empresaId,
+      recibo_id: String(recibo.id),
+      cobro_cliente_id: i.cobro_cliente_id,
+      cuenta_por_cobrar_id: i.cuenta_por_cobrar_id,
+      numero_venta: i.numero_venta,
+      monto: i.monto,
+      saldo_restante: i.saldo_restante,
+    }))
+  );
+  if (ins.error) {
+    await sb.from("recibos_dinero").update({ anulado: true }).eq("empresa_id", empresaId).eq("id", String(recibo.id));
+    throw new ReciboError(ins.error.message, 500);
+  }
+  return { recibo };
 }
 
 type InsertData = {
